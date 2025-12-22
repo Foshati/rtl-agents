@@ -3,7 +3,7 @@
   "name": "rtl-agents",
   "displayName": "RTL Agents",
   "type": "module",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "packageManager": "pnpm@10.22.0",
   "description": "RTL/LTR toggle for Antigravity Agent panels",
   "author": "Foshati",
