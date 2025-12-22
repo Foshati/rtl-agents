@@ -3,9 +3,9 @@
   "name": "rtl-agents",
   "displayName": "RTL Agents",
   "type": "module",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "packageManager": "pnpm@10.22.0",
-  "description": "Enhance RTL/LTR text rendering in VS Code Agent panels - Perfect for Persian, Arabic, Hebrew and bidirectional text streaming",
+  "description": "RTL/LTR toggle for Antigravity Agent panels",
   "author": "Foshati",
   "license": "MIT",
   "homepage": "https://github.com/Foshati/rtl-agents#readme",
@@ -16,107 +16,42 @@
   "bugs": {
     "url": "https://github.com/Foshati/rtl-agents/issues"
   },
-  "keywords": [
-    "rtl",
-    "ltr",
-    "persian",
-    "farsi",
-    "arabic",
-    "hebrew",
-    "bidirectional",
-    "agent",
-    "copilot",
-    "antigravity",
-    "streaming",
-    "text-direction",
-    "vscode"
-  ],
-  "categories": [
-    "Other",
-    "Themes"
-  ],
+  "keywords": ["rtl", "ltr", "persian", "arabic", "antigravity", "agent"],
+  "categories": ["Other"],
   "main": "./dist/index.cjs",
   "icon": "public/icon.png",
   "engines": {
     "vscode": "^1.80.0"
   },
-  "activationEvents": [
-    "onStartupFinished"
-  ],
+  "activationEvents": ["onStartupFinished"],
   "contributes": {
     "commands": [
       {
-        "command": "rtl-agents.enable",
-        "title": "RTL Agent: Enable RTL Mode"
-      },
-      {
-        "command": "rtl-agents.disable",
-        "title": "RTL Agent: Disable RTL Mode"
-      },
-      {
         "command": "rtl-agents.toggle",
-        "title": "RTL Agent: Toggle RTL/LTR Mode"
+        "title": "RTL Agents: Toggle Mode"
+      },
+      {
+        "command": "rtl-agents.setRTL",
+        "title": "RTL Agents: Set RTL"
+      },
+      {
+        "command": "rtl-agents.setLTR",
+        "title": "RTL Agents: Set LTR"
       },
       {
         "command": "rtl-agents.setAuto",
-        "title": "RTL Agent: Set Auto-Detection Mode"
+        "title": "RTL Agents: Set Auto"
       }
     ],
     "configuration": {
       "type": "object",
-      "title": "RTL Agent",
+      "title": "RTL Agents",
       "properties": {
-        "rtl-agents.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable RTL enhancement for Agent panels"
-        },
         "rtl-agents.mode": {
           "type": "string",
           "enum": ["auto", "rtl", "ltr"],
           "default": "auto",
-          "description": "Text direction mode: auto (detect language), rtl (force RTL), ltr (force LTR)"
-        },
-        "rtl-agents.statusBar.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show RTL Agent status in status bar"
-        },
-        "rtl-agents.statusBar.alignment": {
-          "type": "string",
-          "enum": ["left", "right"],
-          "default": "right",
-          "description": "Status bar button alignment"
-        },
-        "rtl-agents.statusBar.priority": {
-          "type": "number",
-          "default": 100,
-          "description": "Status bar button priority"
-        },
-        "rtl-agents.fontFamily": {
-          "type": "string",
-          "default": "",
-          "description": "Custom font family for RTL text (e.g., 'Vazirmatn', 'IRANSansX')"
-        },
-        "rtl-agents.fontSize": {
-          "type": "number",
-          "default": 0,
-          "description": "Custom font size for RTL text (0 = use default)"
-        },
-        "rtl-agents.lineHeight": {
-          "type": "number",
-          "default": 1.6,
-          "description": "Line height for better RTL readability"
-        },
-        "rtl-agents.targets": {
-          "type": "array",
-          "default": [
-            ".chat-message",
-            ".agent-response",
-            ".markdown-body",
-            ".message-content"
-          ],
-          "description": "CSS selectors to target for RTL enhancement"
+          "description": "Text direction mode"
         }
       }
     },
@@ -133,18 +68,14 @@
     "dev": "pnpm build --watch",
     "lint": "eslint .",
     "vscode:prepublish": "pnpm build",
-    "publish": "vsce publish --no-dependencies",
     "pack": "vsce package --no-dependencies",
-    "test": "vitest",
-    "typecheck": "tsc --noEmit",
-    "release": "bumpp && pnpm publish"
+    "test": "vitest"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^6.2.0",
     "@types/node": "^20.19.25",
     "@types/vscode": "^1.80.0",
     "@vscode/vsce": "^3.7.0",
-    "bumpp": "^10.3.1",
     "eslint": "^9.39.1",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
