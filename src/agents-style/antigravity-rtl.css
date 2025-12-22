@@ -1,0 +1,35 @@
+/*
+ * RTL Agents - Antigravity Styles
+ * 
+ * Usage: Copy content to browser DevTools or use with Custom CSS extension
+ * Toggle via Status Bar: Auto → RTL → LTR → Auto
+ */
+
+/* ========== RTL Mode ========== */
+.rtl-mode #cascade > div.flex.w-full.grow.flex-col.overflow-hidden > div {
+  direction: rtl;
+  text-align: right;
+}
+
+/* ========== LTR Mode ========== */
+.ltr-mode #cascade > div.flex.w-full.grow.flex-col.overflow-hidden > div {
+  direction: ltr;
+  text-align: left;
+}
+
+/* ========== Auto Mode (default) ========== */
+.auto-mode #cascade > div.flex.w-full.grow.flex-col.overflow-hidden > div,
+#cascade > div.flex.w-full.grow.flex-col.overflow-hidden > div {
+  direction: auto;
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
+/* ========== Code Blocks - Always LTR ========== */
+#cascade pre,
+#cascade code,
+#cascade [class*="code"] {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
+}
