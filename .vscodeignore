@@ -1,0 +1,14 @@
+.vscode-test/
+node_modules/
+dist/
+*.vsix
+src/
+test/
+*.ts
+!dist/**/*.js
+tsconfig.json
+tsup.config.ts
+eslint.config.js
+pnpm-lock.yaml
+.gitignore
+.github/

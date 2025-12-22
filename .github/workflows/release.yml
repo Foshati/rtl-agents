@@ -1,0 +1,74 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build VSIX
+        run: npx vsce package --no-dependencies
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          files: |
+            rtl-agent-${{ steps.version.outputs.version }}.vsix
+          body: |
+            ## ✨ RTL Agent v${{ steps.version.outputs.version }}
+
+            Enhanced RTL/LTR text rendering for VS Code Agent panels.
+
+            ### 🛠 Manual Installation
+
+            Download `rtl-agent-${{ steps.version.outputs.version }}.vsix` and run:
+
+            ```bash
+            # VS Code
+            code --install-extension rtl-agent-${{ steps.version.outputs.version }}.vsix --force
+
+            # Cursor
+            cursor --install-extension rtl-agent-${{ steps.version.outputs.version }}.vsix --force
+
+            # Antigravity
+            antigravity --install-extension rtl-agent-${{ steps.version.outputs.version }}.vsix --force
+            ```
+
+            ### 🌍 Features
+            - Auto-detection of RTL languages (Persian, Arabic, Hebrew)
+            - Bidirectional text support for AI streaming
+            - Customizable fonts and styling
+          generate_release_notes: true
+
+      - name: Publish to VS Code Marketplace
+        run: npx vsce publish --no-dependencies -p ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        run: npx ovsx publish rtl-agent-${{ steps.version.outputs.version }}.vsix -p ${{ secrets.OPEN_VSX_TOKEN }}

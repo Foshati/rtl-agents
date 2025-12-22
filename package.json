@@ -1,0 +1,152 @@
+{
+  "publisher": "Foshati",
+  "name": "rtl-agent",
+  "displayName": "RTL Agent",
+  "version": "1.0.0",
+  "packageManager": "pnpm@10.22.0",
+  "description": "Enhance RTL/LTR text rendering in VS Code Agent panels - Perfect for Persian, Arabic, Hebrew and bidirectional text streaming",
+  "author": "Foshati",
+  "license": "MIT",
+  "homepage": "https://github.com/Foshati/rtl-agent#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Foshati/rtl-agent"
+  },
+  "bugs": {
+    "url": "https://github.com/Foshati/rtl-agent/issues"
+  },
+  "keywords": [
+    "rtl",
+    "ltr",
+    "persian",
+    "farsi",
+    "arabic",
+    "hebrew",
+    "bidirectional",
+    "agent",
+    "copilot",
+    "antigravity",
+    "streaming",
+    "text-direction",
+    "vscode"
+  ],
+  "categories": [
+    "Other",
+    "Themes"
+  ],
+  "main": "./dist/index.js",
+  "icon": "public/icon.png",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "rtl-agent.enable",
+        "title": "RTL Agent: Enable RTL Mode"
+      },
+      {
+        "command": "rtl-agent.disable",
+        "title": "RTL Agent: Disable RTL Mode"
+      },
+      {
+        "command": "rtl-agent.toggle",
+        "title": "RTL Agent: Toggle RTL/LTR Mode"
+      },
+      {
+        "command": "rtl-agent.setAuto",
+        "title": "RTL Agent: Set Auto-Detection Mode"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "RTL Agent",
+      "properties": {
+        "rtl-agent.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable RTL enhancement for Agent panels"
+        },
+        "rtl-agent.mode": {
+          "type": "string",
+          "enum": ["auto", "rtl", "ltr"],
+          "default": "auto",
+          "description": "Text direction mode: auto (detect language), rtl (force RTL), ltr (force LTR)"
+        },
+        "rtl-agent.statusBar.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show RTL Agent status in status bar"
+        },
+        "rtl-agent.statusBar.alignment": {
+          "type": "string",
+          "enum": ["left", "right"],
+          "default": "right",
+          "description": "Status bar button alignment"
+        },
+        "rtl-agent.statusBar.priority": {
+          "type": "number",
+          "default": 100,
+          "description": "Status bar button priority"
+        },
+        "rtl-agent.fontFamily": {
+          "type": "string",
+          "default": "",
+          "description": "Custom font family for RTL text (e.g., 'Vazirmatn', 'IRANSansX')"
+        },
+        "rtl-agent.fontSize": {
+          "type": "number",
+          "default": 0,
+          "description": "Custom font size for RTL text (0 = use default)"
+        },
+        "rtl-agent.lineHeight": {
+          "type": "number",
+          "default": 1.6,
+          "description": "Line height for better RTL readability"
+        },
+        "rtl-agent.targets": {
+          "type": "array",
+          "default": [
+            ".chat-message",
+            ".agent-response",
+            ".markdown-body",
+            ".message-content"
+          ],
+          "description": "CSS selectors to target for RTL enhancement"
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "rtl-agent.toggle",
+        "key": "ctrl+alt+r",
+        "mac": "ctrl+cmd+r"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --external vscode",
+    "dev": "pnpm build --watch",
+    "lint": "eslint .",
+    "vscode:prepublish": "pnpm build",
+    "publish": "vsce publish --no-dependencies",
+    "pack": "vsce package --no-dependencies",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "release": "bumpp && pnpm publish"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^6.2.0",
+    "@types/node": "^20.19.25",
+    "@types/vscode": "^1.80.0",
+    "@vscode/vsce": "^3.7.0",
+    "bumpp": "^10.3.1",
+    "eslint": "^9.39.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.9"
+  }
+}
