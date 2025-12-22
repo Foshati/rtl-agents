@@ -15,7 +15,7 @@
   <a href="https://marketplace.visualstudio.com/items?itemName=Foshati.rtl-agents">
     <img src="https://img.shields.io/visual-studio-marketplace/i/Foshati.rtl-agents?style=flat-square&color=green" alt="Installs">
   </a>
-  <a href="https://github.com/Foshati/rtl-agents/blob/main/LICENSE">
+  <a href="https://github.com/Foshati/rtl-agentss/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/Foshati/rtl-agents?style=flat-square" alt="License">
   </a>
 </p>

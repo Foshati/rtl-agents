@@ -3,18 +3,18 @@
   "name": "rtl-agents",
   "displayName": "RTL Agents",
   "type": "module",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "packageManager": "pnpm@10.22.0",
   "description": "Enhance RTL/LTR text rendering in VS Code Agent panels - Perfect for Persian, Arabic, Hebrew and bidirectional text streaming",
   "author": "Foshati",
   "license": "MIT",
-  "homepage": "https://github.com/Foshati/rtl-agent#readme",
+  "homepage": "https://github.com/Foshati/rtl-agents#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Foshati/rtl-agent"
+    "url": "https://github.com/Foshati/rtl-agents"
   },
   "bugs": {
-    "url": "https://github.com/Foshati/rtl-agent/issues"
+    "url": "https://github.com/Foshati/rtl-agents/issues"
   },
   "keywords": [
     "rtl",
@@ -46,19 +46,19 @@
   "contributes": {
     "commands": [
       {
-        "command": "rtl-agent.enable",
+        "command": "rtl-agents.enable",
         "title": "RTL Agent: Enable RTL Mode"
       },
       {
-        "command": "rtl-agent.disable",
+        "command": "rtl-agents.disable",
         "title": "RTL Agent: Disable RTL Mode"
       },
       {
-        "command": "rtl-agent.toggle",
+        "command": "rtl-agents.toggle",
         "title": "RTL Agent: Toggle RTL/LTR Mode"
       },
       {
-        "command": "rtl-agent.setAuto",
+        "command": "rtl-agents.setAuto",
         "title": "RTL Agent: Set Auto-Detection Mode"
       }
     ],
@@ -66,49 +66,49 @@
       "type": "object",
       "title": "RTL Agent",
       "properties": {
-        "rtl-agent.enabled": {
+        "rtl-agents.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Enable RTL enhancement for Agent panels"
         },
-        "rtl-agent.mode": {
+        "rtl-agents.mode": {
           "type": "string",
           "enum": ["auto", "rtl", "ltr"],
           "default": "auto",
           "description": "Text direction mode: auto (detect language), rtl (force RTL), ltr (force LTR)"
         },
-        "rtl-agent.statusBar.enabled": {
+        "rtl-agents.statusBar.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Show RTL Agent status in status bar"
         },
-        "rtl-agent.statusBar.alignment": {
+        "rtl-agents.statusBar.alignment": {
           "type": "string",
           "enum": ["left", "right"],
           "default": "right",
           "description": "Status bar button alignment"
         },
-        "rtl-agent.statusBar.priority": {
+        "rtl-agents.statusBar.priority": {
           "type": "number",
           "default": 100,
           "description": "Status bar button priority"
         },
-        "rtl-agent.fontFamily": {
+        "rtl-agents.fontFamily": {
           "type": "string",
           "default": "",
           "description": "Custom font family for RTL text (e.g., 'Vazirmatn', 'IRANSansX')"
         },
-        "rtl-agent.fontSize": {
+        "rtl-agents.fontSize": {
           "type": "number",
           "default": 0,
           "description": "Custom font size for RTL text (0 = use default)"
         },
-        "rtl-agent.lineHeight": {
+        "rtl-agents.lineHeight": {
           "type": "number",
           "default": 1.6,
           "description": "Line height for better RTL readability"
         },
-        "rtl-agent.targets": {
+        "rtl-agents.targets": {
           "type": "array",
           "default": [
             ".chat-message",
@@ -122,7 +122,7 @@
     },
     "keybindings": [
       {
-        "command": "rtl-agent.toggle",
+        "command": "rtl-agents.toggle",
         "key": "ctrl+alt+r",
         "mac": "ctrl+cmd+r"
       }
