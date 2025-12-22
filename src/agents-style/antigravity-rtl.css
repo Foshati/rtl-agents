@@ -1,35 +1,57 @@
 /*
  * RTL Agents - Antigravity Styles
  * 
- * Usage: Copy content to browser DevTools or use with Custom CSS extension
- * Toggle via Status Bar: Auto → RTL → LTR → Auto
+ * How to use with Apc Customize UI++:
+ * 1. Install: ext install drcika.apc-extension
+ * 2. Add to settings.json:
+ *    "apc.iframe.style": "/path/to/this/antigravity-rtl.css"
+ * 3. Restart Antigravity
  */
 
-/* ========== RTL Mode ========== */
-.rtl-mode #cascade > div.flex.w-full.grow.flex-col.overflow-hidden > div {
+/* ========================================== */
+/*            RTL Mode for Antigravity         */
+/* ========================================== */
+
+/* Main chat container - RTL */
+#cascade {
   direction: rtl;
   text-align: right;
 }
 
-/* ========== LTR Mode ========== */
-.ltr-mode #cascade > div.flex.w-full.grow.flex-col.overflow-hidden > div {
-  direction: ltr;
-  text-align: left;
+/* All text content in cascade */
+#cascade > div {
+  direction: rtl;
+  text-align: right;
 }
 
-/* ========== Auto Mode (default) ========== */
-.auto-mode #cascade > div.flex.w-full.grow.flex-col.overflow-hidden > div,
-#cascade > div.flex.w-full.grow.flex-col.overflow-hidden > div {
-  direction: auto;
-  unicode-bidi: plaintext;
-  text-align: start;
-}
+/* ========================================== */
+/*         Code Blocks - Always LTR           */
+/* ========================================== */
 
-/* ========== Code Blocks - Always LTR ========== */
 #cascade pre,
 #cascade code,
-#cascade [class*="code"] {
+#cascade [class*="code"],
+#cascade .prose pre,
+#cascade .prose code {
   direction: ltr !important;
   text-align: left !important;
   unicode-bidi: isolate;
+}
+
+/* ========================================== */
+/*         Toggle Classes (Manual)            */
+/* ========================================== */
+
+/* Force LTR when needed */
+.force-ltr #cascade,
+.force-ltr #cascade > div {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+/* Force RTL */
+.force-rtl #cascade,
+.force-rtl #cascade > div {
+  direction: rtl !important;
+  text-align: right !important;
 }
