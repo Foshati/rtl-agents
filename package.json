@@ -8,13 +8,13 @@
   "description": "Enhance RTL/LTR text rendering in VS Code Agent panels - Perfect for Persian, Arabic, Hebrew and bidirectional text streaming",
   "author": "Foshati",
   "license": "MIT",
-  "homepage": "https://github.com/Foshati/rtl-agent#readme",
+  "homepage": "https://github.com/Foshati/rtl-agents#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Foshati/rtl-agent"
+    "url": "https://github.com/Foshati/rtl-agents"
   },
   "bugs": {
-    "url": "https://github.com/Foshati/rtl-agent/issues"
+    "url": "https://github.com/Foshati/rtl-agents/issues"
   },
   "keywords": [
     "rtl",
