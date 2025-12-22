@@ -3,7 +3,7 @@
   "name": "rtl-agents",
   "displayName": "RTL Agents",
   "type": "module",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "packageManager": "pnpm@10.22.0",
   "description": "RTL/LTR toggle for Antigravity Agent panels",
   "author": "Foshati",
@@ -68,8 +68,7 @@
     "dev": "pnpm build --watch",
     "lint": "eslint .",
     "vscode:prepublish": "pnpm build",
-    "pack": "vsce package --no-dependencies",
-    "test": "vitest"
+    "pack": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^6.2.0",
@@ -78,7 +77,6 @@
     "@vscode/vsce": "^3.7.0",
     "eslint": "^9.39.1",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.9"
+    "typescript": "^5.9.3"
   }
 }
