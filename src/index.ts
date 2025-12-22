@@ -11,7 +11,7 @@ let styleInjector: RTLStyleInjector | undefined
  * Get configuration value
  */
 function getConfig<T>(key: string, defaultValue: T): T {
-  const config = workspace.getConfiguration('rtl-agent')
+  const config = workspace.getConfiguration('rtl-agents')
   return config.get<T>(key, defaultValue)
 }
 
@@ -19,7 +19,7 @@ function getConfig<T>(key: string, defaultValue: T): T {
  * Update configuration value
  */
 async function setConfig<T>(key: string, value: T): Promise<void> {
-  const config = workspace.getConfiguration('rtl-agent')
+  const config = workspace.getConfiguration('rtl-agents')
   await config.update(key, value, true)
 }
 
@@ -193,16 +193,16 @@ export function activate(context: ExtensionContext): void {
 
   // Register commands
   context.subscriptions.push(
-    commands.registerCommand('rtl-agent.enable', enableRTL),
-    commands.registerCommand('rtl-agent.disable', disableRTL),
-    commands.registerCommand('rtl-agent.toggle', toggleMode),
-    commands.registerCommand('rtl-agent.setAuto', setAutoMode),
+    commands.registerCommand('rtl-agents.enable', enableRTL),
+    commands.registerCommand('rtl-agents.disable', disableRTL),
+    commands.registerCommand('rtl-agents.toggle', toggleMode),
+    commands.registerCommand('rtl-agents.setAuto', setAutoMode),
   )
 
   // Create status bar item if enabled
   if (isStatusBarEnabled()) {
     statusBarItem = window.createStatusBarItem(getAlignment(), getPriority())
-    statusBarItem.command = 'rtl-agent.toggle'
+    statusBarItem.command = 'rtl-agents.toggle'
     updateStatusBar()
     statusBarItem.show()
     context.subscriptions.push(statusBarItem)
@@ -211,7 +211,7 @@ export function activate(context: ExtensionContext): void {
   // Listen to configuration changes
   context.subscriptions.push(
     workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('rtl-agent')) {
+      if (e.affectsConfiguration('rtl-agents')) {
         applyStyles()
         updateStatusBar()
       }

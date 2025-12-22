@@ -57,7 +57,7 @@ export class RTLStyleInjector {
    */
   private notifyWebviews(css: string): void {
     const message = {
-      type: 'rtl-agent:styles',
+      type: 'rtl-agents:styles',
       styles: css,
     }
     ;(globalThis as any).__rtlAgentMessage = message

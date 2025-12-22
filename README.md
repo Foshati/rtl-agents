@@ -1,4 +1,4 @@
-# RTL Agent
+# RTL Agents
 
 <p align="center">
   <img src="public/icon.png" alt="RTL Agent Logo" width="128" height="128">
@@ -9,14 +9,14 @@
 </p>
 
 <p align="center">
-  <a href="https://marketplace.visualstudio.com/items?itemName=Foshati.rtl-agent">
-    <img src="https://img.shields.io/visual-studio-marketplace/v/Foshati.rtl-agent?style=flat-square&color=blue" alt="Version">
+  <a href="https://marketplace.visualstudio.com/items?itemName=Foshati.rtl-agents">
+    <img src="https://img.shields.io/visual-studio-marketplace/v/Foshati.rtl-agents?style=flat-square&color=blue" alt="Version">
   </a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=Foshati.rtl-agent">
-    <img src="https://img.shields.io/visual-studio-marketplace/i/Foshati.rtl-agent?style=flat-square&color=green" alt="Installs">
+  <a href="https://marketplace.visualstudio.com/items?itemName=Foshati.rtl-agents">
+    <img src="https://img.shields.io/visual-studio-marketplace/i/Foshati.rtl-agents?style=flat-square&color=green" alt="Installs">
   </a>
-  <a href="https://github.com/Foshati/rtl-agent/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/Foshati/rtl-agent?style=flat-square" alt="License">
+  <a href="https://github.com/Foshati/rtl-agents/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/Foshati/rtl-agents?style=flat-square" alt="License">
   </a>
 </p>
 
@@ -41,7 +41,7 @@
 
 ### From Open VSX
 
-1. Visit [Open VSX - RTL Agent](https://open-vsx.org/extension/Foshati/rtl-agent)
+1. Visit [Open VSX - RTL Agent](https://open-vsx.org/extension/Foshati/rtl-agents)
 2. Click Install
 
 ## 🚀 Usage
@@ -79,13 +79,13 @@ Open Settings (`Ctrl+,` / `Cmd+,`) and search for "RTL Agent":
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `rtl-agent.enabled` | `true` | Enable/disable the extension |
-| `rtl-agent.mode` | `"auto"` | Direction mode: `auto`, `rtl`, or `ltr` |
-| `rtl-agent.fontFamily` | `""` | Custom font (e.g., `Vazirmatn`, `IRANSansX`) |
-| `rtl-agent.fontSize` | `0` | Custom font size (0 = default) |
-| `rtl-agent.lineHeight` | `1.6` | Line height for better readability |
-| `rtl-agent.statusBar.enabled` | `true` | Show status bar indicator |
-| `rtl-agent.statusBar.alignment` | `"right"` | Status bar position |
+| `rtl-agents.enabled` | `true` | Enable/disable the extension |
+| `rtl-agents.mode` | `"auto"` | Direction mode: `auto`, `rtl`, or `ltr` |
+| `rtl-agents.fontFamily` | `""` | Custom font (e.g., `Vazirmatn`, `IRANSansX`) |
+| `rtl-agents.fontSize` | `0` | Custom font size (0 = default) |
+| `rtl-agents.lineHeight` | `1.6` | Line height for better readability |
+| `rtl-agents.statusBar.enabled` | `true` | Show status bar indicator |
+| `rtl-agents.statusBar.alignment` | `"right"` | Status bar position |
 
 ### Recommended Fonts
 

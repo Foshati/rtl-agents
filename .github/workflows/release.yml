@@ -39,7 +39,7 @@ jobs:
         with:
           token: ${{ secrets.PAT_TOKEN }}
           files: |
-            rtl-agent-${{ steps.version.outputs.version }}.vsix
+            rtl-agents-${{ steps.version.outputs.version }}.vsix
           body: |
             ## ✨ RTL Agent v${{ steps.version.outputs.version }}
 
@@ -47,17 +47,17 @@ jobs:
 
             ### 🛠 Manual Installation
 
-            Download `rtl-agent-${{ steps.version.outputs.version }}.vsix` and run:
+            Download `rtl-agents-${{ steps.version.outputs.version }}.vsix` and run:
 
             ```bash
             # VS Code
-            code --install-extension rtl-agent-${{ steps.version.outputs.version }}.vsix --force
+            code --install-extension rtl-agents-${{ steps.version.outputs.version }}.vsix --force
 
             # Cursor
-            cursor --install-extension rtl-agent-${{ steps.version.outputs.version }}.vsix --force
+            cursor --install-extension rtl-agents-${{ steps.version.outputs.version }}.vsix --force
 
             # Antigravity
-            antigravity --install-extension rtl-agent-${{ steps.version.outputs.version }}.vsix --force
+            antigravity --install-extension rtl-agents-${{ steps.version.outputs.version }}.vsix --force
             ```
 
             ### 🌍 Features
@@ -70,4 +70,4 @@ jobs:
         run: npx vsce publish --no-dependencies -p ${{ secrets.VSCE_PAT }}
 
       - name: Publish to Open VSX
-        run: npx ovsx publish rtl-agent-${{ steps.version.outputs.version }}.vsix -p ${{ secrets.OPEN_VSX_TOKEN }}
+        run: npx ovsx publish rtl-agents-${{ steps.version.outputs.version }}.vsix -p ${{ secrets.OPEN_VSX_TOKEN }}

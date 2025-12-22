@@ -15,13 +15,13 @@ Open `settings.json` and add:
 ```json
 {
   "vscode_custom_css.imports": [
-    "file:///Users/YOUR_USERNAME/.vscode/extensions/rtl-agent.css"
+    "file:///Users/YOUR_USERNAME/.vscode/extensions/rtl-agents.css"
   ]
 }
 ```
 
 ### 3. Copy CSS File
-Copy `rtl-agent.css` to the path above.
+Copy `rtl-agents.css` to the path above.
 
 ### 4. Apply Changes
 1. Open Command Palette (`Cmd+Shift+P`)

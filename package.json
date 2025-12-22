@@ -1,7 +1,7 @@
 {
   "publisher": "Foshati",
-  "name": "rtl-agent",
-  "displayName": "RTL Agent",
+  "name": "rtl-agents",
+  "displayName": "RTL Agents",
   "type": "module",
   "version": "1.0.0",
   "packageManager": "pnpm@10.22.0",

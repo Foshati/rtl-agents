@@ -36,7 +36,7 @@ describe('rTLStyleInjector', () => {
 
       const message = (globalThis as any).__rtlAgentMessage
       expect(message).toBeDefined()
-      expect(message.type).toBe('rtl-agent:styles')
+      expect(message.type).toBe('rtl-agents:styles')
       expect(message.styles).toBeTruthy()
     })
   })
