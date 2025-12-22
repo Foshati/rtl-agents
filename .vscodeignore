@@ -5,6 +5,7 @@ src/
 test/
 *.ts
 !dist/**
+!css/**
 tsconfig.json
 tsup.config.ts
 eslint.config.js

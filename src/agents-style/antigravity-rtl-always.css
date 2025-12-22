@@ -1,0 +1,95 @@
+/*
+ * RTL Agents - Antigravity Styles (Always RTL)
+ * 
+ * This file applies RTL styling always without toggle.
+ * 
+ * How to use with Apc Customize UI++:
+ * 1. Install: ext install drcika.apc-extension
+ * 2. Add to settings.json:
+ *    "apc.iframe.style": "/absolute/path/to/antigravity-rtl-always.css"
+ * 3. Restart VS Code (Developer > Reload Window)
+ */
+
+/* ========================================== */
+/*            RTL Mode - Always Active         */
+/* ========================================== */
+
+/* Main cascade container - the chat area */
+#cascade {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* All flex containers inside cascade */
+#cascade .flex {
+  direction: rtl !important;
+}
+
+/* Reverse flex direction for horizontal layouts */
+#cascade .flex-row {
+  flex-direction: row-reverse !important;
+}
+
+/* Chat messages - prose content */
+#cascade .prose,
+#cascade .prose p,
+#cascade .whitespace-pre-wrap,
+#cascade [class*="prose"] p {
+  direction: rtl !important;
+  text-align: right !important;
+  unicode-bidi: plaintext;
+}
+
+/* User chat bubble */
+#cascade .bg-gray-500\/15 {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* User input area - text box */
+[contenteditable="true"],
+[role="textbox"],
+[data-lexical-editor="true"] {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* Input container bottom bar - keep LTR for buttons */
+#cascade .justify-between {
+  direction: ltr !important;
+}
+
+/* ========================================== */
+/*         Code Blocks - Always LTR           */
+/* ========================================== */
+
+/* Code blocks must remain LTR */
+#cascade pre,
+#cascade code,
+#cascade [class*="code"],
+#cascade .prose pre,
+#cascade .prose code,
+pre,
+code,
+.hljs {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
+}
+
+/* ========================================== */
+/*          Tool Calls & System UI            */
+/* ========================================== */
+
+/* Keep tool/system items LTR */
+#cascade button,
+#cascade [role="button"] {
+  direction: ltr !important;
+}
+
+/* File paths, terminal output */
+#cascade .font-mono,
+#cascade [class*="terminal"] {
+  direction: ltr !important;
+  text-align: left !important;
+}

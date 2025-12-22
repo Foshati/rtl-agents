@@ -4,54 +4,104 @@
  * How to use with Apc Customize UI++:
  * 1. Install: ext install drcika.apc-extension
  * 2. Add to settings.json:
- *    "apc.iframe.style": "/path/to/this/antigravity-rtl.css"
- * 3. Restart Antigravity
+ *    "apc.iframe.style": "/absolute/path/to/antigravity-rtl.css"
+ * 3. Restart VS Code (or Developer > Reload Window)
  */
 
 /* ========================================== */
 /*            RTL Mode for Antigravity         */
 /* ========================================== */
 
-/* Main chat container - RTL */
-#cascade {
-  direction: rtl;
-  text-align: right;
+/* Root RTL class - added to body when RTL mode is active */
+body.rtl-agents-active,
+body.rtl-agents-active * {
+  --rtl-direction: rtl;
+  --rtl-text-align: right;
 }
 
-/* All text content in cascade */
-#cascade > div {
-  direction: rtl;
-  text-align: right;
+/* Main cascade container - the chat area */
+body.rtl-agents-active #cascade {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* All flex containers inside cascade */
+body.rtl-agents-active #cascade .flex {
+  direction: rtl !important;
+}
+
+/* Chat messages - prose content */
+body.rtl-agents-active #cascade .prose,
+body.rtl-agents-active #cascade .prose p,
+body.rtl-agents-active #cascade .whitespace-pre-wrap {
+  direction: rtl !important;
+  text-align: right !important;
+  unicode-bidi: plaintext;
+}
+
+/* User input area */
+body.rtl-agents-active [contenteditable="true"],
+body.rtl-agents-active [role="textbox"] {
+  direction: rtl !important;
+  text-align: right !important;
 }
 
 /* ========================================== */
 /*         Code Blocks - Always LTR           */
 /* ========================================== */
 
-#cascade pre,
-#cascade code,
-#cascade [class*="code"],
-#cascade .prose pre,
-#cascade .prose code {
+/* Code blocks must remain LTR regardless of RTL mode */
+body.rtl-agents-active #cascade pre,
+body.rtl-agents-active #cascade code,
+body.rtl-agents-active #cascade [class*="code"],
+body.rtl-agents-active #cascade .prose pre,
+body.rtl-agents-active #cascade .prose code,
+body.rtl-agents-active pre,
+body.rtl-agents-active code {
   direction: ltr !important;
   text-align: left !important;
   unicode-bidi: isolate;
 }
 
 /* ========================================== */
-/*         Toggle Classes (Manual)            */
+/*     Alternative: Always RTL (no toggle)    */
 /* ========================================== */
 
-/* Force LTR when needed */
-.force-ltr #cascade,
-.force-ltr #cascade > div {
-  direction: ltr !important;
-  text-align: left !important;
-}
+/* 
+ * If you want RTL always on without toggle,
+ * uncomment the rules below and remove body.rtl-agents-active prefix
+ */
 
-/* Force RTL */
-.force-rtl #cascade,
-.force-rtl #cascade > div {
+/*
+#cascade {
   direction: rtl !important;
   text-align: right !important;
 }
+
+#cascade .flex {
+  direction: rtl !important;
+}
+
+#cascade .prose,
+#cascade .prose p,
+#cascade .whitespace-pre-wrap {
+  direction: rtl !important;
+  text-align: right !important;
+  unicode-bidi: plaintext;
+}
+
+[contenteditable="true"],
+[role="textbox"] {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+#cascade pre,
+#cascade code,
+pre,
+code {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
+}
+*/
