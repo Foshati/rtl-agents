@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { RTLStyleInjector } from '../src/style-injector'
 
-describe('RTLStyleInjector', () => {
+describe('rTLStyleInjector', () => {
   let injector: RTLStyleInjector
 
   beforeEach(() => {

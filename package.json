@@ -2,6 +2,7 @@
   "publisher": "Foshati",
   "name": "rtl-agent",
   "displayName": "RTL Agent",
+  "type": "module",
   "version": "1.0.0",
   "packageManager": "pnpm@10.22.0",
   "description": "Enhance RTL/LTR text rendering in VS Code Agent panels - Perfect for Persian, Arabic, Hebrew and bidirectional text streaming",
@@ -34,7 +35,7 @@
     "Other",
     "Themes"
   ],
-  "main": "./dist/index.js",
+  "main": "./dist/index.cjs",
   "icon": "public/icon.png",
   "engines": {
     "vscode": "^1.80.0"

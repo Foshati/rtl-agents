@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { LanguageDetector } from '../src/language-detector'
 
-describe('LanguageDetector', () => {
+describe('languageDetector', () => {
   let detector: LanguageDetector
 
   beforeEach(() => {

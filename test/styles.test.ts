@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { generateRTLStyles, isRTLText, getTextDirection } from '../src/styles'
+import { describe, expect, it } from 'vitest'
+import { generateRTLStyles, getTextDirection, isRTLText } from '../src/styles'
 
 describe('styles', () => {
   describe('generateRTLStyles()', () => {
@@ -123,7 +123,7 @@ describe('styles', () => {
     })
   })
 
-  describe('RTL_CHAR_REGEX pattern', () => {
+  describe('rTL_CHAR_REGEX pattern', () => {
     // Test using the isRTLText function which uses the regex internally
     it('should detect Persian characters', () => {
       expect(isRTLText('سلام')).toBe(true)
