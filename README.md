@@ -5,31 +5,40 @@
 </p>
 
 <p align="center">
-  <b>RTL/LTR toggle for AI Agent panels</b>
+  <b>RTL/LTR support for AI Agent panels</b>
 </p>
 
-<p align="center">
-  <a href="https://marketplace.visualstudio.com/items?itemName=Foshati.rtl-agents">
-    <img src="https://img.shields.io/visual-studio-marketplace/v/Foshati.rtl-agents?style=flat-square&color=blue" alt="Version">
-  </a>
-  <a href="https://github.com/Foshati/rtl-agents/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/Foshati/rtl-agents?style=flat-square" alt="License">
-  </a>
-</p>
+---
+
+## ⚡ Quick Setup (2 minutes)
+
+### Step 1: Install Apc Customize UI++
+```bash
+ext install drcika.apc-extension
+```
+
+### Step 2: Add to settings.json
+```json
+{
+  "apc.iframe.style": "~/.vscode/extensions/foshati.rtl-agents-1.2.3/src/agents-style/antigravity-rtl.css"
+}
+```
+
+> 💡 **Tip:** Find the exact path by running:
+> ```bash
+> ls ~/.vscode/extensions/ | grep rtl-agents
+> ```
+
+### Step 3: Restart VS Code/Antigravity
+Press `Cmd+Shift+P` → "Reload Window"
 
 ---
 
 ## ✨ Features
 
-- **Status Bar Toggle**: Click to switch between Auto/RTL/LTR modes
-- **Keyboard Shortcut**: `Ctrl+Alt+R` (Windows) / `Ctrl+Cmd+R` (Mac)
-- **Code Blocks**: Always stay LTR for proper code display
-
-## 📦 Installation
-
-```bash
-ext install Foshati.rtl-agents
-```
+- **Auto RTL**: Persian, Arabic, Hebrew text automatically RTL
+- **Code Protection**: Code blocks stay LTR
+- **Status Bar Toggle**: Click to switch modes (coming soon)
 
 ## 🎯 Supported Platforms
 
@@ -40,24 +49,6 @@ ext install Foshati.rtl-agents
 | Cursor | 🔜 Roadmap |
 | Cody | 🔜 Roadmap |
 | Continue | 🔜 Roadmap |
-| Cline | 🔜 Roadmap |
-| Windsurf | 🔜 Roadmap |
-| Amazon Q | 🔜 Roadmap |
-| Tabnine | 🔜 Roadmap |
-
-## 🔧 Usage
-
-1. Install the extension
-2. Look for the mode indicator in the **Status Bar** (bottom right)
-3. Click to toggle: `Auto` → `RTL` → `LTR` → `Auto`
-
-### Modes
-
-| Mode | Description |
-|------|-------------|
-| **Auto** | Browser auto-detects direction based on text |
-| **RTL** | Force Right-to-Left (Persian, Arabic, Hebrew) |
-| **LTR** | Force Left-to-Right (English, etc.) |
 
 ## 🌍 Supported Languages
 
