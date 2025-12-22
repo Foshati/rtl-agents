@@ -1,0 +1,139 @@
+/*
+ * RTL Agent - Custom CSS for VS Code Agent Panels
+ * 
+ * Instructions:
+ * 1. Install "Custom CSS and JS Loader" extension
+ * 2. Add this file to your VS Code settings:
+ *    "vscode_custom_css.imports": [
+ *      "file:///path/to/rtl-agent.css"
+ *    ]
+ * 3. Run Command: "Reload Custom CSS and JS"
+ * 4. Restart VS Code
+ */
+
+/* =================================
+   RTL Support for Agent Panels
+   ================================= */
+
+/* Agent Response Messages */
+.chat-message,
+.agent-response,
+.message-content,
+.chat-content,
+.response-content,
+[class*="chat-message"],
+[class*="agent-response"],
+[class*="message"] {
+  direction: auto;
+  unicode-bidi: plaintext;
+  text-align: start;
+  line-height: 1.7 !important;
+  font-family: "Vazirmatn", "IRANSansX", "Tahoma", var(--vscode-font-family), sans-serif;
+}
+
+/* Markdown Content in Agent */
+.markdown-body,
+.markdown-content,
+.rendered-markdown,
+[class*="markdown"] {
+  direction: auto;
+  unicode-bidi: plaintext;
+  text-align: start;
+  line-height: 1.7 !important;
+}
+
+/* Force RTL for Persian/Arabic Text */
+.chat-message:lang(fa),
+.chat-message:lang(ar),
+.chat-message:lang(he),
+.agent-response:lang(fa),
+.agent-response:lang(ar),
+.agent-response:lang(he) {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* Agent Panel Container */
+.agent-view,
+.chat-view,
+.copilot-view,
+[class*="agent"],
+[class*="copilot"] {
+  direction: auto;
+  unicode-bidi: plaintext;
+}
+
+/* Code Blocks - Always LTR */
+pre,
+code,
+.code-block,
+[class*="code"],
+.monaco-editor {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
+}
+
+/* Inline code in RTL context */
+p code,
+li code,
+span code {
+  unicode-bidi: isolate;
+  direction: ltr;
+}
+
+/* Lists */
+ul, ol {
+  padding-inline-start: 2em;
+  padding-inline-end: 0;
+}
+
+/* Tables */
+table {
+  direction: inherit;
+}
+
+th, td {
+  text-align: start;
+}
+
+/* Input Areas */
+.chat-input,
+.agent-input,
+.message-input,
+textarea {
+  direction: auto;
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
+/* Streaming Text Optimization */
+[data-streaming="true"],
+.streaming,
+.typing {
+  direction: inherit;
+  unicode-bidi: plaintext;
+}
+
+/* =================================
+   Antigravity Agent Specific
+   ================================= */
+
+/* Target Antigravity panels specifically */
+[class*="antigravity"],
+[class*="Antigravity"] {
+  direction: auto;
+  unicode-bidi: plaintext;
+  line-height: 1.7 !important;
+}
+
+/* Better text rendering */
+.chat-message,
+.agent-response,
+.markdown-body {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}

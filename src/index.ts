@@ -221,7 +221,7 @@ export function activate(context: ExtensionContext): void {
   // Apply initial styles
   applyStyles()
 
-  console.log('RTL Agent activated')
+  console.warn('RTL Agent activated')
 }
 
 /**
@@ -233,5 +233,5 @@ export function deactivate(): void {
     styleInjector = undefined
   }
   statusBarItem = undefined
-  console.log('RTL Agent deactivated')
+  console.warn('RTL Agent deactivated')
 }

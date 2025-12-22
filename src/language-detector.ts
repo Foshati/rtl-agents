@@ -105,7 +105,7 @@ export class LanguageDetector {
     let hebrewChars = 0
 
     for (const char of text) {
-      if (/\s/.test(char) || /[.,;:!?'"()\[\]{}]/.test(char))
+      if (/\s/.test(char) || /[.,;:!?'"()[\]{}]/.test(char))
         continue
 
       totalChars++
