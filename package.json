@@ -3,9 +3,9 @@
   "name": "rtl-agents",
   "displayName": "RTL Agents",
   "type": "module",
-  "version": "1.3.7",
+  "version": "1.4.0",
   "packageManager": "pnpm@10.22.0",
-  "description": "RTL/LTR toggle for Antigravity Agent panels",
+  "description": "RTL/LTR toggle for Antigravity Agent panels - No dependencies required!",
   "author": "Foshati",
   "license": "MIT",
   "homepage": "https://github.com/Foshati/rtl-agents#readme",
@@ -41,6 +41,14 @@
       {
         "command": "rtl-agents.setAuto",
         "title": "RTL Agents: Set Auto"
+      },
+      {
+        "command": "rtl-agents.inject",
+        "title": "RTL Agents: Inject CSS (Enable RTL)"
+      },
+      {
+        "command": "rtl-agents.remove",
+        "title": "RTL Agents: Remove CSS (Disable RTL)"
       }
     ],
     "configuration": {
