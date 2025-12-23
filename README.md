@@ -5,36 +5,19 @@
 </p>
 
 <p align="center">
-  <b>RTL/LTR support for AI Agent panels in VS Code, Cursor, and Antigravity</b>
+  <b>RTL/LTR support for AI Agent panels - No external dependencies!</b>
 </p>
 
 ---
 
-## ⚡ Quick Setup
-
-### Step 1: Install Extensions
+## ⚡ Quick Setup (One Command!)
 
 1. Install **RTL Agents** from the marketplace
-2. Install **[Apc Customize UI++](https://marketplace.visualstudio.com/items?itemName=drcika.apc-extension)**
+2. Press `Cmd/Ctrl+Shift+P` → Type **"RTL Agents: Inject CSS"** → Press Enter
+3. Click **"Reload Now"** when prompted
+4. Done! 🎉
 
-### Step 2: Add CSS Path to Settings
-
-Open `settings.json` (Cmd/Ctrl+Shift+P → "Preferences: Open Settings (JSON)") and add:
-
-```json
-{
-  "apc.iframe.style": "~/.vscode/extensions/foshati.rtl-agents-1.3.7/src/agents-style/antigravity-rtl.css"
-}
-```
-
-> 💡 **Tip:** Find the exact extension version by running:
-> ```bash
-> ls ~/.vscode/extensions/ | grep rtl-agents
-> ```
-
-### Step 3: Reload Window
-
-Press `Cmd/Ctrl+Shift+P` → "Developer: Reload Window"
+> ⚠️ **Note:** You'll need to re-inject after VS Code/Antigravity updates.
 
 ---
 
@@ -42,7 +25,8 @@ Press `Cmd/Ctrl+Shift+P` → "Developer: Reload Window"
 
 ### Status Bar Toggle
 After installation, you'll see a toggle button in the **status bar** (bottom right):
-- Click to cycle through modes: **Auto** → **RTL** → **LTR** → **Auto**
+- `⬅️ Auto` | `⬅️ RTL` | `➡️ LTR`
+- Click to cycle through modes
 
 ### Keyboard Shortcut
 | Shortcut | Action |
@@ -52,29 +36,25 @@ After installation, you'll see a toggle button in the **status bar** (bottom rig
 
 ### Command Palette
 Press `Cmd/Ctrl+Shift+P` and type:
-- `RTL Agents: Toggle Mode`
-- `RTL Agents: Set RTL`
-- `RTL Agents: Set LTR`
-- `RTL Agents: Set Auto`
-
-### Settings
-Configure default mode in settings:
-```json
-{
-  "rtl-agents.mode": "auto"
-}
-```
-Options: `"auto"` | `"rtl"` | `"ltr"`
+| Command | Description |
+|---------|-------------|
+| `RTL Agents: Inject CSS` | Enable RTL support (one-time setup) |
+| `RTL Agents: Remove CSS` | Disable RTL support |
+| `RTL Agents: Toggle Mode` | Switch between Auto/RTL/LTR |
+| `RTL Agents: Set RTL` | Force RTL mode |
+| `RTL Agents: Set LTR` | Force LTR mode |
+| `RTL Agents: Set Auto` | Auto-detect mode |
 
 ---
 
 ## ✨ Features
 
-- **Auto RTL Detection**: Persian, Arabic, Hebrew text automatically displays RTL
-- **Code Block Protection**: Code blocks always stay LTR
-- **Status Bar Toggle**: Quick switch between modes
-- **Keyboard Shortcuts**: Fast mode switching
-- **Persistent Settings**: Mode preference saved across sessions
+- ✅ **No external dependencies** - Works standalone!
+- ✅ **Auto RTL Detection** - Persian, Arabic, Hebrew text automatically RTL
+- ✅ **Code Block Protection** - Code blocks always stay LTR
+- ✅ **Status Bar Toggle** - Quick switch between modes
+- ✅ **Keyboard Shortcuts** - Fast mode switching
+- ✅ **Persistent Settings** - Mode preference saved across sessions
 
 ## 🎯 Supported Platforms
 
@@ -83,9 +63,6 @@ Options: `"auto"` | `"rtl"` | `"ltr"`
 | **Antigravity** | ✅ Fully Supported |
 | **VS Code** | ✅ Supported |
 | **Cursor** | ✅ Supported |
-| GitHub Copilot | 🔜 Roadmap |
-| Cody | 🔜 Roadmap |
-| Continue | 🔜 Roadmap |
 
 ## 🌍 Supported Languages
 
@@ -97,13 +74,17 @@ Options: `"auto"` | `"rtl"` | `"ltr"`
 ## 🔧 Troubleshooting
 
 **Status bar not showing?**
-- Make sure extension is enabled
-- Try reloading window: `Cmd/Ctrl+Shift+P` → "Developer: Reload Window"
+- Reload window: `Cmd/Ctrl+Shift+P` → "Developer: Reload Window"
 
-**RTL not working in Agent panels?**
-- Ensure `apc.iframe.style` path is correct in `settings.json`
-- Verify Apc extension is installed and enabled
-- Reload window after changes
+**RTL not working?**
+- Run `RTL Agents: Inject CSS` command
+- Reload window after injection
+
+**After VS Code update, RTL stopped working?**
+- Run `RTL Agents: Inject CSS` again
+
+**Want to disable RTL?**
+- Run `RTL Agents: Remove CSS` command
 
 ## 📄 License
 
