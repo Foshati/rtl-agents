@@ -7,4 +7,5 @@ export default defineConfig({
   clean: true,
   minify: true,
   external: ['vscode'],
+  outExtension: () => ({ js: '.js' }),
 })
