@@ -1,81 +1,105 @@
+import * as path from 'node:path'
 import type { ExtensionContext, StatusBarItem } from 'vscode'
-import { commands, StatusBarAlignment, window, workspace } from 'vscode'
+import { commands, extensions, StatusBarAlignment, window, workspace } from 'vscode'
 
-type Mode = 'auto' | 'rtl' | 'ltr'
+// State
+let statusBarItem: StatusBarItem
+let isRTL = false
 
-let statusBarItem: StatusBarItem | undefined
+// CSS Filename - Targeting #cascade
+const CSS_FILE = 'antigravity-rtl.css'
 
-// Get current mode from settings
-function getMode(): Mode {
-  return workspace.getConfiguration('rtl-agents').get('mode', 'auto')
+export function activate(context: ExtensionContext) {
+  try {
+    // 1. Create Status Bar Item (Priority 100 to be high prominence)
+    statusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 100)
+    statusBarItem.command = 'rtl-agents.toggle'
+    context.subscriptions.push(statusBarItem)
+
+    // 2. Register Commands
+    const toggleCmd = commands.registerCommand('rtl-agents.toggle', () => toggleRTL(context))
+    context.subscriptions.push(toggleCmd)
+
+    // 3. Initialize State
+    const currentMode = workspace.getConfiguration('rtl-agents').get<string>('mode', 'auto')
+    isRTL = currentMode === 'rtl'
+    
+    // 4. Update UI
+    updateStatusBar()
+    
+    // 5. Show it IMMEDIATELY
+    statusBarItem.show()
+
+    // 6. Apply initial style if needed
+    if (isRTL) {
+      applyRTL(context, true).catch(console.error)
+    }
+
+    // console.log('RTL Agents activated successfully')
+  }
+  catch (error) {
+    console.error('Failed to activate RTL Agents:', error)
+    window.showErrorMessage('RTL Agents failed to activate.')
+  }
 }
 
-// Set mode in settings
-async function setMode(mode: Mode): Promise<void> {
-  await workspace.getConfiguration('rtl-agents').update('mode', mode, true)
+export function deactivate() {
+  // Clean up
 }
 
-// Update status bar display
-function updateStatusBar(): void {
-  if (!statusBarItem)
+async function toggleRTL(context: ExtensionContext) {
+  isRTL = !isRTL
+  
+  // Save state
+  await workspace.getConfiguration('rtl-agents').update('mode', isRTL ? 'rtl' : 'ltr', true)
+  
+  // Update UI first for immediate feedback
+  updateStatusBar()
+  
+  // Apply Logic
+  await applyRTL(context, isRTL)
+}
+
+function updateStatusBar() {
+  if (isRTL) {
+    statusBarItem.text = '$(arrow-left) RTL'
+    statusBarItem.tooltip = 'RTL Mode Active (Click to switch to LTR)'
+    statusBarItem.backgroundColor = undefined // Standard color
+  }
+  else {
+    statusBarItem.text = '$(arrow-right) LTR'
+    statusBarItem.tooltip = 'LTR Mode Active (Click to switch to RTL)'
+    statusBarItem.backgroundColor = undefined
+  }
+}
+
+async function applyRTL(context: ExtensionContext, enable: boolean) {
+  // Check for APC extension gracefully
+  const apcExtension = extensions.getExtension('drcika.apc-extension')
+  
+  if (!apcExtension) {
+    // Only warn if user is trying to enable RTL
+    if (enable) {
+      const action = await window.showWarningMessage(
+        'To apply RTL styles to Antigravity, the "Apc Customize UI++" extension is required.',
+        'Install Now',
+      )
+      if (action === 'Install Now') {
+        commands.executeCommand('workbench.extensions.installExtension', 'drcika.apc-extension')
+      }
+    }
     return
-
-  const mode = getMode()
-  const icons: Record<Mode, string> = {
-    auto: '$(symbol-misc)',
-    rtl: '$(arrow-left)',
-    ltr: '$(arrow-right)',
-  }
-  const labels: Record<Mode, string> = {
-    auto: 'Auto',
-    rtl: 'RTL',
-    ltr: 'LTR',
   }
 
-  statusBarItem.text = `${icons[mode]} ${labels[mode]}`
-  statusBarItem.tooltip = `RTL Agents: ${labels[mode]} mode\nClick to toggle`
-}
-
-// Cycle through modes: auto -> rtl -> ltr -> auto
-async function toggleMode(): Promise<void> {
-  const current = getMode()
-  const next: Record<Mode, Mode> = {
-    auto: 'rtl',
-    rtl: 'ltr',
-    ltr: 'auto',
+  const apcConfig = workspace.getConfiguration('apc')
+  
+  // Use the correct CSS file path
+  const cssPath = path.join(context.extensionPath, 'src', 'agents-style', CSS_FILE)
+  
+  if (enable) {
+    await apcConfig.update('iframe.style', cssPath, true)
   }
-  await setMode(next[current])
-  updateStatusBar()
-  window.showInformationMessage(`RTL Agents: ${next[current].toUpperCase()} mode`)
-}
-
-export function activate(context: ExtensionContext): void {
-  // Create status bar item
-  statusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 100)
-  statusBarItem.command = 'rtl-agents.toggle'
-  updateStatusBar()
-  statusBarItem.show()
-
-  // Register commands
-  context.subscriptions.push(
-    commands.registerCommand('rtl-agents.toggle', toggleMode),
-    commands.registerCommand('rtl-agents.setRTL', () => setMode('rtl')),
-    commands.registerCommand('rtl-agents.setLTR', () => setMode('ltr')),
-    commands.registerCommand('rtl-agents.setAuto', () => setMode('auto')),
-    statusBarItem,
-  )
-
-  // Listen to config changes
-  context.subscriptions.push(
-    workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('rtl-agents'))
-        updateStatusBar()
-    }),
-  )
-
-  // RTL Agents activated
-}
-
-export function deactivate(): void {
-  statusBarItem?.dispose()
+  else {
+    await apcConfig.update('iframe.style', undefined, true)
+  }
 }
