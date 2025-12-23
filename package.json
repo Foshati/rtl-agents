@@ -2,21 +2,16 @@
   "publisher": "Foshati",
   "name": "rtl-agents",
   "displayName": "RTL Agents",
-  "type": "module",
-  "version": "1.5.0",
-  "packageManager": "pnpm@10.22.0",
-  "description": "RTL/LTR toggle for Antigravity Agent panels",
+  "version": "1.6.0",
+  "description": "Simple RTL/LTR toggle",
   "author": "Foshati",
   "license": "MIT",
-  "homepage": "https://github.com/Foshati/rtl-agents#readme",
+  "homepage": "https://github.com/Foshati/rtl-agents",
   "repository": {
     "type": "git",
     "url": "https://github.com/Foshati/rtl-agents"
   },
-  "bugs": {
-    "url": "https://github.com/Foshati/rtl-agents/issues"
-  },
-  "keywords": ["rtl", "ltr", "persian", "arabic", "antigravity", "agent"],
+  "keywords": ["rtl", "ltr", "toggle"],
   "categories": ["Other"],
   "main": "./dist/index.js",
   "icon": "public/icon.png",
@@ -28,30 +23,17 @@
     "commands": [
       {
         "command": "rtl-agents.toggle",
-        "title": "RTL Agents: Toggle Mode"
-      },
-      {
-        "command": "rtl-agents.setRTL",
-        "title": "RTL Agents: Set RTL"
-      },
-      {
-        "command": "rtl-agents.setLTR",
-        "title": "RTL Agents: Set LTR"
-      },
-      {
-        "command": "rtl-agents.setAuto",
-        "title": "RTL Agents: Set Auto"
+        "title": "RTL Agents: Toggle RTL/LTR"
       }
     ],
     "configuration": {
-      "type": "object",
       "title": "RTL Agents",
       "properties": {
         "rtl-agents.mode": {
           "type": "string",
-          "enum": ["auto", "rtl", "ltr"],
-          "default": "auto",
-          "description": "Text direction mode"
+          "enum": ["rtl", "ltr"],
+          "default": "rtl",
+          "description": "Current mode"
         }
       }
     },
@@ -65,17 +47,10 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --external vscode",
-    "dev": "pnpm build --watch",
-    "lint": "eslint .",
-    "vscode:prepublish": "pnpm build",
-    "pack": "vsce package --no-dependencies"
+    "vscode:prepublish": "pnpm build"
   },
   "devDependencies": {
-    "@antfu/eslint-config": "^6.2.0",
-    "@types/node": "^20.19.25",
     "@types/vscode": "^1.80.0",
-    "@vscode/vsce": "^3.7.0",
-    "eslint": "^9.39.1",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   }
