@@ -2,7 +2,7 @@
   "publisher": "Foshati",
   "name": "rtl-agents",
   "displayName": "RTL Agents",
-  "version": "1.7.1",
+  "version": "1.7.3",
   "packageManager": "pnpm@10.22.0",
   "description": "Simple RTL/LTR toggle",
   "author": "Foshati",
@@ -59,6 +59,7 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --external vscode",
+    "lint": "eslint .",
     "vscode:prepublish": "pnpm build"
   },
   "devDependencies": {
