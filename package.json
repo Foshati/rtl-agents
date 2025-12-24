@@ -2,7 +2,7 @@
   "publisher": "Foshati",
   "name": "rtl-agents",
   "displayName": "RTL Agents",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "packageManager": "pnpm@10.22.0",
   "description": "Simple RTL/LTR toggle",
   "author": "Foshati",

@@ -27,6 +27,7 @@ function getWorkbenchPath(): string | undefined {
   const appRoot = env.appRoot
   const paths = [
     path.join(appRoot, 'out', 'vs', 'code', 'electron-sandbox', 'workbench', 'workbench.html'),
+    path.join(appRoot, 'out', 'vs', 'code', 'electron-browser', 'workbench', 'workbench.html'),
     path.join(appRoot, 'out', 'vs', 'workbench', 'workbench.html'),
   ]
   for (const p of paths) {
