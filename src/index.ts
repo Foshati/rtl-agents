@@ -34,24 +34,52 @@ function getWorkbenchPath(): string | undefined {
   return undefined
 }
 
-function getCssContent(mode: Mode): string {
+function getJsContent(mode: Mode): string {
   if (mode === 'rtl') {
     return `
-      #react-app, #chat {
-        direction: rtl !important;
-        text-align: right !important;
-      }
-      #react-app pre, #react-app code, #chat pre, #chat code {
-        direction: ltr !important;
-        text-align: left !important;
-      }
+      (function() {
+        function applyRTL() {
+          const targets = ['react-app', 'chat'];
+          targets.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+              el.setAttribute('dir', 'rtl');
+              el.style.direction = 'rtl';
+              el.style.textAlign = 'right';
+            }
+          });
+        }
+        
+        // Initial apply
+        applyRTL();
+        document.addEventListener('DOMContentLoaded', applyRTL);
+
+        // Robust observer
+        const observer = new MutationObserver(() => applyRTL());
+        observer.observe(document.body, { childList: true, subtree: true });
+      })();
     `
   }
   return `
-    #react-app, #chat {
-      direction: ltr !important;
-      text-align: left !important;
-    }
+    (function() {
+      function applyLTR() {
+        const targets = ['react-app', 'chat'];
+        targets.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) {
+            el.removeAttribute('dir');
+            el.style.direction = '';
+            el.style.textAlign = '';
+          }
+        });
+      }
+      
+      applyLTR();
+      document.addEventListener('DOMContentLoaded', applyLTR);
+      
+      const observer = new MutationObserver(() => applyLTR());
+      observer.observe(document.body, { childList: true, subtree: true });
+    })();
   `
 }
 
@@ -65,16 +93,16 @@ async function applyMode(mode: Mode): Promise<void> {
   try {
     let content = fs.readFileSync(workbenchPath, 'utf-8')
     
-    // Remove existing RTL Agents style
+    // Remove existing RTL Agents style/script
     content = content.replace(/<!-- RTL-AGENTS -->[\s\S]*?<!-- \/RTL-AGENTS -->/g, '')
     
-    // Add new style
-    const css = getCssContent(mode)
-    const styleTag = `<!-- RTL-AGENTS --><style>${css}</style><!-- /RTL-AGENTS -->`
+    // Add new script
+    const js = getJsContent(mode)
+    const scriptTag = `<!-- RTL-AGENTS --><script>${js}</script><!-- /RTL-AGENTS -->`
     
     const headEnd = content.indexOf('</head>')
     if (headEnd !== -1) {
-      content = content.slice(0, headEnd) + styleTag + content.slice(headEnd)
+      content = content.slice(0, headEnd) + scriptTag + content.slice(headEnd)
       fs.writeFileSync(workbenchPath, content, 'utf-8')
       
       const choice = await window.showInformationMessage(
