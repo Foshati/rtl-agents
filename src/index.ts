@@ -1,7 +1,7 @@
 import type { ExtensionContext, StatusBarItem } from 'vscode'
-import { commands, env, StatusBarAlignment, Uri, window, workspace } from 'vscode'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { commands, env, StatusBarAlignment, window, workspace } from 'vscode'
 
 type Mode = 'rtl' | 'ltr'
 
@@ -16,7 +16,8 @@ async function setMode(mode: Mode): Promise<void> {
 }
 
 function updateStatusBar(): void {
-  if (!statusBarItem) return
+  if (!statusBarItem)
+    return
   const mode = getMode()
   statusBarItem.text = mode === 'rtl' ? '$(arrow-left) RTL' : '$(arrow-right) LTR'
   statusBarItem.tooltip = `Click to toggle (current: ${mode.toUpperCase()})`
@@ -29,7 +30,8 @@ function getWorkbenchPath(): string | undefined {
     path.join(appRoot, 'out', 'vs', 'workbench', 'workbench.html'),
   ]
   for (const p of paths) {
-    if (fs.existsSync(p)) return p
+    if (fs.existsSync(p))
+      return p
   }
   return undefined
 }
@@ -92,28 +94,29 @@ async function applyMode(mode: Mode): Promise<void> {
 
   try {
     let content = fs.readFileSync(workbenchPath, 'utf-8')
-    
+
     // Remove existing RTL Agents style/script
     content = content.replace(/<!-- RTL-AGENTS -->[\s\S]*?<!-- \/RTL-AGENTS -->/g, '')
-    
+
     // Add new script
     const js = getJsContent(mode)
     const scriptTag = `<!-- RTL-AGENTS --><script>${js}</script><!-- /RTL-AGENTS -->`
-    
+
     const headEnd = content.indexOf('</head>')
     if (headEnd !== -1) {
       content = content.slice(0, headEnd) + scriptTag + content.slice(headEnd)
       fs.writeFileSync(workbenchPath, content, 'utf-8')
-      
+
       const choice = await window.showInformationMessage(
         `RTL Agents: ${mode.toUpperCase()} mode applied! Reload to see changes.`,
-        'Reload Now'
+        'Reload Now',
       )
       if (choice === 'Reload Now') {
         commands.executeCommand('workbench.action.reloadWindow')
       }
     }
-  } catch (err) {
+  }
+  catch (err) {
     window.showErrorMessage(`RTL Agents: ${err}`)
   }
 }
@@ -136,7 +139,8 @@ export function activate(context: ExtensionContext): void {
     commands.registerCommand('rtl-agents.toggle', toggle),
     statusBarItem,
     workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('rtl-agents')) updateStatusBar()
+      if (e.affectsConfiguration('rtl-agents'))
+        updateStatusBar()
     }),
   )
 }

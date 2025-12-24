@@ -12,14 +12,22 @@
     "type": "git",
     "url": "https://github.com/Foshati/rtl-agents"
   },
-  "keywords": ["rtl", "ltr", "toggle"],
-  "categories": ["Other"],
+  "keywords": [
+    "rtl",
+    "ltr",
+    "toggle"
+  ],
+  "categories": [
+    "Other"
+  ],
   "main": "./dist/index.js",
   "icon": "public/icon.png",
   "engines": {
     "vscode": "^1.80.0"
   },
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "contributes": {
     "commands": [
       {
@@ -32,7 +40,10 @@
       "properties": {
         "rtl-agents.mode": {
           "type": "string",
-          "enum": ["rtl", "ltr"],
+          "enum": [
+            "rtl",
+            "ltr"
+          ],
           "default": "rtl",
           "description": "Current mode"
         }
@@ -51,7 +62,10 @@
     "vscode:prepublish": "pnpm build"
   },
   "devDependencies": {
+    "@antfu/eslint-config": "^6.7.3",
+    "@types/node": "^25.0.3",
     "@types/vscode": "^1.80.0",
+    "eslint": "^9.39.2",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   }
