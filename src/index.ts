@@ -181,24 +181,10 @@ async function handleToggle(): Promise<void> {
   const isOn = statuses.some(s => s.isInstalled)
 
   if (isOn) {
-    const answer = await vscode.window.showInformationMessage(
-      'RTL Agents is currently active. Do you want to disable it?',
-      'Disable Patch',
-      'Cancel',
-    )
-    if (answer === 'Disable Patch') {
-      await vscode.commands.executeCommand('rtl-agents.remove')
-    }
+    await vscode.commands.executeCommand('rtl-agents.remove')
   }
   else {
-    const answer = await vscode.window.showInformationMessage(
-      'RTL Agents is currently inactive. Do you want to enable it?',
-      'Enable Patch',
-      'Cancel',
-    )
-    if (answer === 'Enable Patch') {
-      await vscode.commands.executeCommand('rtl-agents.add')
-    }
+    await vscode.commands.executeCommand('rtl-agents.add')
   }
 }
 

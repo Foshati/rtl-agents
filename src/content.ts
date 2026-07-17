@@ -26,7 +26,7 @@ export function getRtlCss(): string {
 }
 
 #rtl-agents-toggle-btn.rtl-agents-active {
-  color: var(--vscode-button-background, #4facfe) !important;
+  color: #ff9f0a !important;
   opacity: 1 !important;
 }
 

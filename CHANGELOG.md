@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.6] - 2026-07-17
+
+### Added
+- **Instant Toggling**: Replaced status bar confirmation popups with immediate activation/deactivation.
+- **Improved Status Bar UI**: Replaced generic text with a clean `⇄ RTL` (active, orange color) and `⇄ LTR` (inactive) status indicator.
+- **Active Orange Accent Color**: The injected `⇄` header button and status bar item turn vibrant orange when active.
+- **Dynamic Path Finding Fallback**: Automatically locates the core workbench folder relative to `workbench.html` on custom IDE builds.
+
 ## [1.7.5] - 2026-07-17
 
 ### Added
