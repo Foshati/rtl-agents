@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.5] - 2026-07-17
+
+### Added
+- **Multi-IDE Support**: Automatically patch Cursor, VS Code, Windsurf, VSCodium, and Antigravity IDE.
+- **Smart RTL Text Detection**: Apply RTL alignment only on elements containing Hebrew, Arabic, or Persian text, keeping code blocks, tables, and system components in LTR.
+- **Header Toggle Button**: Native UI toggle button injected directly into panel headers.
+- **Local Storage State Persistence**: Remember LTR/RTL button toggle state across window reloads.
+- **product.json Checksum Stripping**: Prevent "Unsupported/Corrupted installation" warnings from being displayed by the editor.
+- **Automated macOS Permissions Repair Helper**: Copy the `chown` command in one click if permission is denied.
+- **Custom configurations**: User-defined CSS selectors and character regex.
+
 ## [1.1.0] - 2025-12-23
 
 ### Fixed

@@ -2,9 +2,9 @@
   "publisher": "Foshati",
   "name": "rtl-agents",
   "displayName": "RTL Agents",
-  "version": "1.7.4",
+  "version": "1.7.5",
   "packageManager": "pnpm@10.22.0",
-  "description": "Simple RTL/LTR toggle",
+  "description": "Professional RTL/LTR toggle support for AI Chats (Cursor, VS Code, Windsurf, VSCodium, Antigravity) with code block alignment safety.",
   "author": "Foshati",
   "license": "MIT",
   "homepage": "https://github.com/Foshati/rtl-agents",
@@ -15,7 +15,15 @@
   "keywords": [
     "rtl",
     "ltr",
-    "toggle"
+    "toggle",
+    "bidi",
+    "cursor",
+    "antigravity",
+    "windsurf",
+    "persian",
+    "arabic",
+    "hebrew",
+    "chat"
   ],
   "categories": [
     "Other"
@@ -31,6 +39,22 @@
   "contributes": {
     "commands": [
       {
+        "command": "rtl-agents.add",
+        "title": "RTL Agents: Activate RTL"
+      },
+      {
+        "command": "rtl-agents.remove",
+        "title": "RTL Agents: Deactivate RTL"
+      },
+      {
+        "command": "rtl-agents.status",
+        "title": "RTL Agents: Check Status"
+      },
+      {
+        "command": "rtl-agents.restart",
+        "title": "RTL Agents: Restart RTL"
+      },
+      {
         "command": "rtl-agents.toggle",
         "title": "RTL Agents: Toggle RTL/LTR"
       }
@@ -38,14 +62,18 @@
     "configuration": {
       "title": "RTL Agents",
       "properties": {
-        "rtl-agents.mode": {
+        "rtl-agents.customSelectors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional custom CSS selectors where RTL direction toggle should be applied."
+        },
+        "rtl-agents.rtlCharacterRegex": {
           "type": "string",
-          "enum": [
-            "rtl",
-            "ltr"
-          ],
-          "default": "rtl",
-          "description": "Current mode"
+          "default": "[\\u0590-\\u05FF\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF]",
+          "description": "Regular expression pattern used to detect Right-To-Left characters (Hebrew, Arabic, Persian, etc.)."
         }
       }
     },
