@@ -29,7 +29,8 @@ export async function updateStatusBar(): Promise<void> {
   const installations = await findIdeInstallations()
 
   if (installations.length === 0) {
-    statusBarItem.text = '$(globe) RTL Agents: N/A'
+    statusBarItem.text = '⇄ RTL: N/A'
+    statusBarItem.color = undefined
     statusBarItem.tooltip = 'Active IDE installation could not be detected'
     return
   }
@@ -38,12 +39,14 @@ export async function updateStatusBar(): Promise<void> {
   const anyInstalled = statuses.some((s: RtlStatus) => s.isInstalled)
 
   if (anyInstalled) {
-    statusBarItem.text = '$(globe) RTL Agents: On'
-    statusBarItem.tooltip = 'RTL Agents support is injected and active. Click to toggle.'
+    statusBarItem.text = '⇄ RTL'
+    statusBarItem.color = '#ff9f0a'
+    statusBarItem.tooltip = 'RTL Agents is active. Click to deactivate.'
   }
   else {
-    statusBarItem.text = '$(globe) RTL Agents: Off'
-    statusBarItem.tooltip = 'RTL Agents support is inactive. Click to toggle.'
+    statusBarItem.text = '⇄ LTR'
+    statusBarItem.color = undefined
+    statusBarItem.tooltip = 'RTL Agents is inactive. Click to activate.'
   }
 }
 

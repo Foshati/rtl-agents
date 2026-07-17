@@ -36,14 +36,21 @@ export async function findIdeInstallations(): Promise<IdeInstallation[]> {
     return []
   }
 
-  const workbenchDir = path.join(resourcesApp, 'out', 'vs', 'workbench')
-  if (!(await exists(workbenchDir))) {
-    return []
-  }
-
   for (const config of WORKBENCH_CONFIGS) {
     const workbenchHtmlPath = path.join(resourcesApp, config.relativePath)
     if (await exists(workbenchHtmlPath)) {
+      let workbenchDir = path.join(resourcesApp, 'out', 'vs', 'workbench')
+      if (!(await exists(workbenchDir))) {
+        // Resolve 3 levels up and into sibling 'workbench' folder
+        const siblingWorkbench = path.resolve(path.dirname(workbenchHtmlPath), '..', '..', '..', 'workbench')
+        if (await exists(siblingWorkbench)) {
+          workbenchDir = siblingWorkbench
+        }
+        else {
+          workbenchDir = path.dirname(workbenchHtmlPath)
+        }
+      }
+
       return [{
         ideName: vscode.env.appName,
         workbenchHtmlPath,
