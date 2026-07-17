@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.8] - 2026-07-17
+
+### Added
+- **Resilient Workflow**: Added \`continue-on-error: true\` for the Open VSX publishing step to ensure the pipeline succeeds even if the version is already published manually or if the registry is experiencing downtime.
+
 ## [1.7.7] - 2026-07-17
 
 ### Added
