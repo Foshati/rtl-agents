@@ -1,5 +1,5 @@
-import * as vscode from 'vscode'
 import type { RtlStatus } from './types'
+import * as vscode from 'vscode'
 import { findIdeInstallations } from './finder'
 import { getStatus } from './injector'
 
