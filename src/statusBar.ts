@@ -19,9 +19,9 @@ export function createStatusBarItem(): vscode.StatusBarItem {
 }
 
 /**
- * Update the status bar UI according to the current installation state.
+ * Update the status bar UI according to the current installation and layout active state.
  */
-export async function updateStatusBar(): Promise<void> {
+export async function updateStatusBar(layoutActive?: boolean): Promise<void> {
   if (!statusBarItem) {
     return
   }
@@ -36,17 +36,25 @@ export async function updateStatusBar(): Promise<void> {
   }
 
   const statuses = await getStatus(installations)
-  const anyInstalled = statuses.some((s: RtlStatus) => s.isInstalled)
+  const isPatchInstalled = statuses.some((s: RtlStatus) => s.isInstalled)
 
-  if (anyInstalled) {
-    statusBarItem.text = '⇄ RTL'
-    statusBarItem.color = '#ff9f0a'
-    statusBarItem.tooltip = 'RTL Agents is active. Click to deactivate.'
-  }
-  else {
+  if (!isPatchInstalled) {
     statusBarItem.text = '⇄ LTR'
     statusBarItem.color = undefined
-    statusBarItem.tooltip = 'RTL Agents is inactive. Click to activate.'
+    statusBarItem.tooltip = 'RTL Agents: Not patched. Click to patch.'
+  }
+  else {
+    const active = layoutActive ?? false
+    if (active) {
+      statusBarItem.text = '⇄ RTL'
+      statusBarItem.color = '#ff9f0a'
+      statusBarItem.tooltip = 'RTL Agents is active. Click to switch to LTR.'
+    }
+    else {
+      statusBarItem.text = '⇄ LTR'
+      statusBarItem.color = undefined
+      statusBarItem.tooltip = 'RTL Agents is inactive. Click to switch to RTL.'
+    }
   }
 }
 

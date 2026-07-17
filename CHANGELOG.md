@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.7] - 2026-07-17
+
+### Added
+- **Proven Real-Time Toggling Logic**: Re-designed the layout status sync mechanism to match the proven, reliable logic of `antigravity-chat-rtl-extension-main`. Clicking either the status bar item or the header button toggles the RTL layout instantly without requiring VS Code window reloads.
+- **Synchronized Status Bar state**: Real-time synchronization of active layout states using a status bar DOM observer inside `workbench.html`.
+
 ## [1.7.6] - 2026-07-17
 
 ### Added
