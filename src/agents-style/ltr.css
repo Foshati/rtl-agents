@@ -1,9 +1,0 @@
-/*
- * RTL Agents - LTR Mode
- */
-
-#react-app,
-#chat {
-  direction: ltr;
-  text-align: left;
-}
