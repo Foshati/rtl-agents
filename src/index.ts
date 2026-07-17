@@ -6,10 +6,12 @@ import { createStatusBarItem, disposeStatusBar, updateStatusBar } from './status
 
 const STATE_MODE_KEY = 'rtl-agents.mode'
 const STATE_VERSION_KEY = 'rtl-agents.version'
+const STATE_LAYOUT_ACTIVE_KEY = 'rtl-agents.layoutActive'
 
 let outputChannel: vscode.OutputChannel | undefined
 let globalState: vscode.Memento
 let currentVersion: string
+let globalLayoutActive = false
 
 function getOutputChannel(): vscode.OutputChannel {
   if (!outputChannel) {
@@ -61,7 +63,7 @@ async function promptRestartIfChanged(changed: boolean): Promise<void> {
   if (!changed) {
     return
   }
-  await updateStatusBar()
+  await updateStatusBar(globalLayoutActive)
   const action = await vscode.window.showInformationMessage(
     'RTL Agents: Patch applied! Changes will take effect after restarting the IDE.',
     'Restart Now',
@@ -167,7 +169,7 @@ async function handleStatus(): Promise<void> {
   }
 
   channel.show(true)
-  await updateStatusBar()
+  await updateStatusBar(globalLayoutActive)
 }
 
 async function handleToggle(): Promise<void> {
@@ -178,13 +180,15 @@ async function handleToggle(): Promise<void> {
   }
 
   const statuses = await getStatus(installations)
-  const isOn = statuses.some(s => s.isInstalled)
+  const isPatchInstalled = statuses.some(s => s.isInstalled)
 
-  if (isOn) {
-    await vscode.commands.executeCommand('rtl-agents.remove')
+  if (!isPatchInstalled) {
+    await vscode.commands.executeCommand('rtl-agents.add')
   }
   else {
-    await vscode.commands.executeCommand('rtl-agents.add')
+    globalLayoutActive = !globalLayoutActive
+    await globalState.update(STATE_LAYOUT_ACTIVE_KEY, globalLayoutActive)
+    await updateStatusBar(globalLayoutActive)
   }
 }
 
@@ -326,6 +330,7 @@ async function autoReactivate(): Promise<void> {
 export function activate(context: vscode.ExtensionContext): void {
   globalState = context.globalState
   currentVersion = context.extension.packageJSON.version ?? '1.0.0'
+  globalLayoutActive = globalState.get<boolean>(STATE_LAYOUT_ACTIVE_KEY, false)
 
   const explained = globalState.get<boolean>('rtl-agents.usageExplained')
   if (!explained) {
@@ -353,7 +358,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // Automatically monitor configuration edits (e.g. custom selectors, custom regex) and re-patch on the fly
     vscode.workspace.onDidChangeConfiguration(async (e) => {
       if (e.affectsConfiguration('rtl-agents')) {
-        await updateStatusBar()
+        await updateStatusBar(globalLayoutActive)
         if (getSavedMode() === 'active') {
           const installations = await findIdeInstallations()
           for (const inst of installations) {
@@ -368,7 +373,7 @@ export function activate(context: vscode.ExtensionContext): void {
   autoReactivate().catch((err) => {
     getOutputChannel().appendLine(`Auto-reactivate error: ${err}`)
   })
-  updateStatusBar().catch((err) => {
+  updateStatusBar(globalLayoutActive).catch((err) => {
     getOutputChannel().appendLine(`Status bar error: ${err}`)
   })
 }

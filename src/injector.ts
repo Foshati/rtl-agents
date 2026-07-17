@@ -1,8 +1,7 @@
 import type { IdeInstallation, RtlStatus } from './types'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import * as vscode from 'vscode'
-import { CSS_FILENAME, getRtlCss, getRtlJs, HTML_LINK_MARKER, JS_FILENAME } from './content'
+import { CSS_FILENAME, HTML_LINK_MARKER, JS_FILENAME, RTL_CSS, RTL_JS } from './content'
 import { exists } from './utils'
 
 /**
@@ -46,20 +45,6 @@ export async function getStatus(installations: IdeInstallation[]): Promise<RtlSt
   }
 
   return statuses
-}
-
-/**
- * Read custom configurations from VS Code workspace.
- */
-function getCustomSelectors(): string[] {
-  return vscode.workspace.getConfiguration('rtl-agents').get<string[]>('customSelectors', [])
-}
-
-function getRtlCharacterRegex(): string {
-  return vscode.workspace.getConfiguration('rtl-agents').get<string>(
-    'rtlCharacterRegex',
-    '[\\u0590-\\u05FF\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF]',
-  )
 }
 
 /**
@@ -121,11 +106,6 @@ export async function addRtl(installation: IdeInstallation): Promise<{ messages:
   let changed = false
   let permissionError = false
 
-  const customSelectors = getCustomSelectors()
-  const rtlRegex = getRtlCharacterRegex()
-  const cssContent = getRtlCss()
-  const jsContent = getRtlJs(customSelectors, rtlRegex)
-
   // If already installed, just refresh CSS/JS (in case settings or extension version changed)
   if (await isInstalled(installation)) {
     const reinject = await reinjectAssets(installation)
@@ -146,12 +126,12 @@ export async function addRtl(installation: IdeInstallation): Promise<{ messages:
 
     // 2. Write CSS asset to workbenchDir
     const cssPath = path.join(installation.workbenchDir, CSS_FILENAME)
-    await fs.writeFile(cssPath, cssContent, 'utf-8')
+    await fs.writeFile(cssPath, RTL_CSS, 'utf-8')
     messages.push(`  CSS: Written to ${cssPath}`)
 
     // 3. Write JS asset to workbenchDir
     const jsPath = path.join(installation.workbenchDir, JS_FILENAME)
-    await fs.writeFile(jsPath, jsContent, 'utf-8')
+    await fs.writeFile(jsPath, RTL_JS, 'utf-8')
     messages.push(`  JS: Written to ${jsPath}`)
 
     // 4. Calculate relative paths
@@ -290,11 +270,6 @@ export async function reinjectAssets(
     return { messages, changed: false, permissionError: false }
   }
 
-  const customSelectors = getCustomSelectors()
-  const rtlRegex = getRtlCharacterRegex()
-  const cssContent = getRtlCss()
-  const jsContent = getRtlJs(customSelectors, rtlRegex)
-
   try {
     const cssPath = path.join(installation.workbenchDir, CSS_FILENAME)
     const jsPath = path.join(installation.workbenchDir, JS_FILENAME)
@@ -303,8 +278,8 @@ export async function reinjectAssets(
     let jsMatches = false
 
     try {
-      cssMatches = (await fs.readFile(cssPath, 'utf-8')) === cssContent
-      jsMatches = (await fs.readFile(jsPath, 'utf-8')) === jsContent
+      cssMatches = (await fs.readFile(cssPath, 'utf-8')) === RTL_CSS
+      jsMatches = (await fs.readFile(jsPath, 'utf-8')) === RTL_JS
     }
     catch {
       // If reading fails, file is missing or corrupted, so write it.
@@ -315,8 +290,8 @@ export async function reinjectAssets(
       return { messages, changed: false, permissionError: false }
     }
 
-    await fs.writeFile(cssPath, cssContent, 'utf-8')
-    await fs.writeFile(jsPath, jsContent, 'utf-8')
+    await fs.writeFile(cssPath, RTL_CSS, 'utf-8')
+    await fs.writeFile(jsPath, RTL_JS, 'utf-8')
     messages.push('  Assets: Re-written with updated configurations')
     return { messages, changed: true, permissionError: false }
   }
