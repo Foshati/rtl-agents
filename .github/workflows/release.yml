@@ -76,3 +76,4 @@ jobs:
 
       - name: Publish to Open VSX
         run: npx ovsx publish rtl-agents-${{ steps.version.outputs.version }}.vsix -p ${{ secrets.OPEN_VSX_TOKEN }}
+        continue-on-error: true

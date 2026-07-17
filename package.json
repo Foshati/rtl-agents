@@ -2,7 +2,7 @@
   "publisher": "Foshati",
   "name": "rtl-agents",
   "displayName": "RTL Agents",
-  "version": "1.7.7",
+  "version": "1.7.8",
   "packageManager": "pnpm@10.22.0",
   "description": "Professional RTL/LTR toggle support for AI Chats (Cursor, VS Code, Windsurf, VSCodium, Antigravity) with code block alignment safety.",
   "author": "Foshati",
