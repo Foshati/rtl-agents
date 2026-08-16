@@ -2,7 +2,7 @@
   "publisher": "foshati",
   "name": "rtl-agents",
   "displayName": "RTL Agents",
-  "version": "1.8.0",
+  "version": "2.0.0",
   "packageManager": "pnpm@10.22.0",
   "description": "Professional RTL/LTR toggle support for AI Chats (Cursor, VS Code, Windsurf, VSCodium, Antigravity) with code block alignment safety.",
   "author": "Foshati",
@@ -68,12 +68,13 @@
             "type": "string"
           },
           "default": [],
-          "description": "Additional custom CSS selectors where RTL direction toggle should be applied."
+          "description": "Additional chat container selectors to enable RTL inside. Text direction is resolved per paragraph within these containers."
         },
         "rtl-agents.rtlCharacterRegex": {
           "type": "string",
-          "default": "[\\u0590-\\u05FF\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF]",
-          "description": "Regular expression pattern used to detect Right-To-Left characters (Hebrew, Arabic, Persian, etc.)."
+          "default": "",
+          "description": "No longer used.",
+          "deprecationMessage": "Deprecated since v2.0.0. Direction is now resolved natively per paragraph by the browser (unicode-bidi: plaintext), so no character regex is needed."
         }
       }
     },
@@ -88,12 +89,14 @@
   "scripts": {
     "build": "tsup src/index.ts --external vscode",
     "lint": "eslint .",
-    "vscode:prepublish": "pnpm build"
+    "vscode:prepublish": "pnpm build",
+    "test": "esbuild test/run.ts --bundle --platform=node --format=cjs --outfile=.test-out/run.cjs --external:vscode --log-level=warning && node .test-out/run.cjs"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^6.7.3",
     "@types/node": "^25.0.3",
     "@types/vscode": "^1.80.0",
+    "esbuild": "^0.27.7",
     "eslint": "^9.39.2",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"

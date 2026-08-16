@@ -1,16 +1,51 @@
-import type { IdeInstallation, RtlStatus } from './types'
+import type {
+  ContentOptions,
+  IdeInstallation,
+  PatchManifest,
+  PatchOptions,
+  PatchResult,
+  RtlStatus,
+  TargetManifest,
+  WorkbenchTarget,
+} from './types'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { CSS_FILENAME, HTML_LINK_MARKER, JS_FILENAME, RTL_CSS, RTL_JS } from './content'
-import { exists } from './utils'
+import {
+  buildCss,
+  buildInjection,
+  buildJs,
+  CSS_FILENAME,
+  hasPatch,
+  JS_FILENAME,
+  MANIFEST_FILENAME,
+  stripInjected,
+} from './content'
+import { exists, hashFile, hashText, isPermissionError } from './utils'
+
+function manifestPath(installation: IdeInstallation): string {
+  return path.join(installation.workbenchDir, MANIFEST_FILENAME)
+}
+
+async function readManifest(installation: IdeInstallation): Promise<PatchManifest | undefined> {
+  try {
+    return JSON.parse(await fs.readFile(manifestPath(installation), 'utf-8')) as PatchManifest
+  }
+  catch {
+    return undefined
+  }
+}
 
 /**
- * Check if RTL tags are present in workbench.html.
+ * Relative href from a target's HTML file to an asset in the shared asset dir.
  */
-export async function isInstalled(installation: IdeInstallation): Promise<boolean> {
+function relativeAsset(target: WorkbenchTarget, fileName: string): string {
+  const relativeDir = path.relative(path.dirname(target.htmlPath), target.assetDir).replace(/\\/g, '/')
+  return relativeDir ? `${relativeDir}/${fileName}` : `./${fileName}`
+}
+
+async function isTargetPatched(target: WorkbenchTarget): Promise<boolean> {
   try {
-    const content = await fs.readFile(installation.workbenchHtmlPath, 'utf-8')
-    return content.includes(HTML_LINK_MARKER)
+    return hasPatch(await fs.readFile(target.htmlPath, 'utf-8'))
   }
   catch {
     return false
@@ -18,11 +53,25 @@ export async function isInstalled(installation: IdeInstallation): Promise<boolea
 }
 
 /**
- * Check if the extension is fully active (tags present in HTML and JS/CSS exist on disk).
+ * Check if any workbench document carries the patch.
+ */
+export async function isInstalled(installation: IdeInstallation): Promise<boolean> {
+  for (const target of installation.targets) {
+    if (await isTargetPatched(target)) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Check that every target is patched and the assets are present on disk.
  */
 export async function isFullyInstalled(installation: IdeInstallation): Promise<boolean> {
-  if (!(await isInstalled(installation))) {
-    return false
+  for (const target of installation.targets) {
+    if (!(await isTargetPatched(target))) {
+      return false
+    }
   }
   const cssPath = path.join(installation.workbenchDir, CSS_FILENAME)
   const jsPath = path.join(installation.workbenchDir, JS_FILENAME)
@@ -36,10 +85,24 @@ export async function getStatus(installations: IdeInstallation[]): Promise<RtlSt
   const statuses: RtlStatus[] = []
 
   for (const inst of installations) {
+    let patchedTargets = 0
+    let htmlBackupExists = false
+
+    for (const target of inst.targets) {
+      if (await isTargetPatched(target)) {
+        patchedTargets++
+      }
+      if (await exists(`${target.htmlPath}.bak`)) {
+        htmlBackupExists = true
+      }
+    }
+
     statuses.push({
       installation: inst,
-      isInstalled: await isInstalled(inst),
-      htmlBackupExists: await exists(`${inst.workbenchHtmlPath}.bak`),
+      isInstalled: patchedTargets > 0,
+      patchedTargets,
+      totalTargets: inst.targets.length,
+      htmlBackupExists,
       productBackupExists: await exists(`${inst.productJsonPath}.bak`),
     })
   }
@@ -48,143 +111,313 @@ export async function getStatus(installations: IdeInstallation[]): Promise<RtlSt
 }
 
 /**
- * Remove the checksum of workbench.html from product.json to avoid corrupt installation alert.
+ * Drop the checksums of every patched workbench document so the editor stops
+ * reporting a corrupt installation.
  */
-async function removeChecksum(installation: IdeInstallation, messages: string[]): Promise<void> {
+async function removeChecksums(installation: IdeInstallation, messages: string[]): Promise<void> {
   try {
     const content = await fs.readFile(installation.productJsonPath, 'utf-8')
     const product = JSON.parse(content)
+    if (!product.checksums) {
+      messages.push('  product.json: No checksums section — nothing to strip')
+      return
+    }
 
-    if (product.checksums && product.checksums[installation.checksumKey]) {
-      // Save product.json backup
-      const backupPath = `${installation.productJsonPath}.bak`
+    const removed = installation.targets
+      .map(t => t.checksumKey)
+      .filter(key => key in product.checksums)
+
+    if (removed.length === 0) {
+      messages.push('  product.json: Checksums already removed')
+      return
+    }
+
+    // Never overwrite an existing backup — it is the only copy of the originals.
+    const backupPath = `${installation.productJsonPath}.bak`
+    if (!(await exists(backupPath))) {
       await fs.copyFile(installation.productJsonPath, backupPath)
       messages.push('  product.json: Backup saved')
+    }
 
-      delete product.checksums[installation.checksumKey]
-      await fs.writeFile(installation.productJsonPath, JSON.stringify(product, null, '\t'), 'utf-8')
-      messages.push('  product.json: Successfully removed checksum entry')
+    for (const key of removed) {
+      delete product.checksums[key]
     }
-    else {
-      messages.push('  product.json: Checksum already removed or not found')
-    }
+    await fs.writeFile(installation.productJsonPath, JSON.stringify(product, null, '\t'), 'utf-8')
+    messages.push(`  product.json: Removed ${removed.length} checksum entr${removed.length === 1 ? 'y' : 'ies'}`)
   }
   catch (e: unknown) {
-    const err = e as NodeJS.ErrnoException
-    if (err.code === 'EPERM' || err.code === 'EACCES') {
-      messages.push(`  product.json: Permission denied to ${installation.productJsonPath}`)
-      messages.push('       Please try running with Administrator/sudo privileges.')
+    if (isPermissionError(e)) {
+      messages.push(`  product.json: Permission denied at ${installation.productJsonPath}`)
     }
     else {
-      messages.push(`  product.json: Error: ${err.message}`)
+      messages.push(`  product.json: Error: ${(e as Error).message}`)
     }
   }
 }
 
 /**
- * Restore product.json from its backup file.
+ * Put back only the checksum entries we removed.
+ *
+ * Copying the whole backup over the live file would clobber unrelated changes
+ * made by an IDE update that happened while the patch was applied.
  */
-async function restoreProductJson(installation: IdeInstallation, messages: string[]): Promise<void> {
+async function restoreChecksums(installation: IdeInstallation, messages: string[]): Promise<void> {
   const backupPath = `${installation.productJsonPath}.bak`
-  if (await exists(backupPath)) {
-    try {
-      await fs.copyFile(backupPath, installation.productJsonPath)
+  if (!(await exists(backupPath))) {
+    return
+  }
+
+  try {
+    const backupText = await fs.readFile(backupPath, 'utf-8')
+    const currentText = await fs.readFile(installation.productJsonPath, 'utf-8')
+    const keys = installation.targets.map(t => t.checksumKey)
+
+    // If our checksum keys are the only difference, put the original file back
+    // verbatim so formatting and key order survive untouched.
+    const expected = JSON.parse(backupText)
+    if (expected.checksums) {
+      for (const key of keys) {
+        delete expected.checksums[key]
+      }
+    }
+
+    if (JSON.stringify(expected) === JSON.stringify(JSON.parse(currentText))) {
+      await fs.writeFile(installation.productJsonPath, backupText, 'utf-8')
       await fs.unlink(backupPath)
       messages.push('  product.json: Restored from backup')
+      return
     }
-    catch (e: unknown) {
-      messages.push(`  product.json: Restore failed: ${(e as Error).message}`)
+
+    // product.json changed underneath us (IDE update): merge only our keys back.
+    const backup = JSON.parse(backupText)
+    const product = JSON.parse(currentText)
+    let restored = 0
+
+    if (backup.checksums) {
+      product.checksums = product.checksums ?? {}
+      for (const key of keys) {
+        if (backup.checksums[key] && !product.checksums[key]) {
+          product.checksums[key] = backup.checksums[key]
+          restored++
+        }
+      }
     }
+
+    if (restored > 0) {
+      await fs.writeFile(installation.productJsonPath, JSON.stringify(product, null, '\t'), 'utf-8')
+    }
+    await fs.unlink(backupPath)
+    messages.push(`  product.json: Merged ${restored} checksum entr${restored === 1 ? 'y' : 'ies'} back`)
+  }
+  catch (e: unknown) {
+    messages.push(`  product.json: Checksum restore failed: ${(e as Error).message}`)
   }
 }
 
 /**
- * Inject RTL CSS, JS and patch workbench.html.
+ * Write the CSS/JS assets. Returns true when anything on disk changed.
  */
-export async function addRtl(installation: IdeInstallation): Promise<{ messages: string[], changed: boolean, permissionError: boolean }> {
+async function writeAssets(
+  installation: IdeInstallation,
+  options: ContentOptions,
+  messages: string[],
+): Promise<boolean> {
+  const cssPath = path.join(installation.workbenchDir, CSS_FILENAME)
+  const jsPath = path.join(installation.workbenchDir, JS_FILENAME)
+  const css = buildCss(options)
+  const js = buildJs(options)
+
+  let changed = false
+
+  for (const [filePath, content] of [[cssPath, css], [jsPath, js]] as const) {
+    let currentContent: string | undefined
+    try {
+      currentContent = await fs.readFile(filePath, 'utf-8')
+    }
+    catch {
+      currentContent = undefined
+    }
+    if (currentContent !== content) {
+      await fs.writeFile(filePath, content, 'utf-8')
+      messages.push(`  ${path.basename(filePath)}: Written`)
+      changed = true
+    }
+  }
+
+  if (!changed) {
+    messages.push('  Assets: Already up to date')
+  }
+  return changed
+}
+
+/**
+ * Patch a single workbench HTML document.
+ */
+async function patchTarget(
+  target: WorkbenchTarget,
+  messages: string[],
+): Promise<{ changed: boolean, manifest?: TargetManifest }> {
+  const html = await fs.readFile(target.htmlPath, 'utf-8')
+
+  // Strip first so re-patching over v1 (or a half-applied patch) yields the true original.
+  const original = stripInjected(html)
+  const originalHash = hashText(original)
+  const backupPath = `${target.htmlPath}.bak`
+
+  // Refresh the backup whenever it does not match this IDE build. A backup left
+  // over from an older build is exactly how a restore corrupts an updated IDE.
+  const backupHash = await hashFile(backupPath)
+  if (backupHash !== originalHash) {
+    await fs.writeFile(backupPath, original, 'utf-8')
+    messages.push(`  ${target.label}: Backup ${backupHash ? 'refreshed' : 'saved'}`)
+  }
+
+  const injection = buildInjection(
+    relativeAsset(target, CSS_FILENAME),
+    relativeAsset(target, JS_FILENAME),
+  )
+
+  let patched: string
+  const headClose = original.indexOf('</head>')
+  if (headClose !== -1) {
+    patched = original.substring(0, headClose) + injection + original.substring(headClose)
+  }
+  else {
+    const htmlClose = original.lastIndexOf('</html>')
+    patched = htmlClose !== -1
+      ? original.substring(0, htmlClose) + injection + original.substring(htmlClose)
+      : original + injection
+    messages.push(`  ${target.label}: No </head> found — appended instead`)
+  }
+
+  if (patched === html) {
+    messages.push(`  ${target.label}: Already patched`)
+    return { changed: false, manifest: { htmlPath: target.htmlPath, originalHash } }
+  }
+
+  await fs.writeFile(target.htmlPath, patched, 'utf-8')
+  messages.push(`  ${target.label}: Patched`)
+  return { changed: true, manifest: { htmlPath: target.htmlPath, originalHash } }
+}
+
+/**
+ * Inject RTL CSS/JS into every workbench document of an installation.
+ */
+export async function addRtl(installation: IdeInstallation, options: PatchOptions): Promise<PatchResult> {
+  const messages: string[] = []
+  let changed = false
+
+  try {
+    if (await writeAssets(installation, options, messages)) {
+      changed = true
+    }
+
+    const manifestTargets: TargetManifest[] = []
+    for (const target of installation.targets) {
+      const result = await patchTarget(target, messages)
+      if (result.changed) {
+        changed = true
+      }
+      if (result.manifest) {
+        manifestTargets.push(result.manifest)
+      }
+    }
+
+    const manifest: PatchManifest = {
+      extensionVersion: options.extensionVersion,
+      ideName: installation.ideName,
+      targets: manifestTargets,
+    }
+    await fs.writeFile(manifestPath(installation), `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8')
+
+    await removeChecksums(installation, messages)
+  }
+  catch (e: unknown) {
+    if (isPermissionError(e)) {
+      messages.push(`  Permission denied: ${installation.workbenchHtmlPath}`)
+      messages.push('  Run your IDE as Administrator, or fix ownership on macOS.')
+      return { messages, changed, permissionError: true }
+    }
+    messages.push(`  Error: ${(e as Error).message}`)
+  }
+
+  return { messages, changed, permissionError: false }
+}
+
+/**
+ * Remove the patch and restore every workbench document.
+ */
+export async function removeRtl(installation: IdeInstallation): Promise<PatchResult> {
   const messages: string[] = []
   let changed = false
   let permissionError = false
 
-  // If already installed, just refresh CSS/JS (in case settings or extension version changed)
-  if (await isInstalled(installation)) {
-    const reinject = await reinjectAssets(installation)
-    const updated = reinject.messages.some(m => m.includes('Re-written'))
-    messages.push(
-      updated
-        ? `  RTL already installed in ${installation.ideName} — Assets updated with current settings`
-        : `  RTL already installed in ${installation.ideName}`,
-    )
-    return { messages, changed: reinject.changed, permissionError: reinject.permissionError }
-  }
+  const manifest = await readManifest(installation)
 
-  try {
-    // 1. Backup workbench.html
-    const htmlBackupPath = `${installation.workbenchHtmlPath}.bak`
-    await fs.copyFile(installation.workbenchHtmlPath, htmlBackupPath)
-    messages.push('  workbench.html: Backup saved')
-
-    // 2. Write CSS asset to workbenchDir
-    const cssPath = path.join(installation.workbenchDir, CSS_FILENAME)
-    await fs.writeFile(cssPath, RTL_CSS, 'utf-8')
-    messages.push(`  CSS: Written to ${cssPath}`)
-
-    // 3. Write JS asset to workbenchDir
-    const jsPath = path.join(installation.workbenchDir, JS_FILENAME)
-    await fs.writeFile(jsPath, RTL_JS, 'utf-8')
-    messages.push(`  JS: Written to ${jsPath}`)
-
-    // 4. Calculate relative paths
-    const relativeDir = path.relative(
-      path.dirname(installation.workbenchHtmlPath),
-      installation.workbenchDir,
-    )
-    const normalizedRelativeDir = relativeDir.replace(/\\/g, '/')
-    const relativeCssPath = normalizedRelativeDir ? `${normalizedRelativeDir}/${CSS_FILENAME}` : `./${CSS_FILENAME}`
-    const relativeJsPath = normalizedRelativeDir ? `${normalizedRelativeDir}/${JS_FILENAME}` : `./${JS_FILENAME}`
-
-    // 5. Modify workbench.html
-    let html = await fs.readFile(installation.workbenchHtmlPath, 'utf-8')
-
-    // Inject CSS link after main CSS link
-    const cssPattern = /<link[^>]*workbench\.desktop\.main\.css[^>]*>/
-    const cssMatch = html.match(cssPattern)
-    const cssLinkTag = `\n\t<!-- RTL Agents Support -->\n\t<link rel="stylesheet" href="${relativeCssPath}">`
-
-    if (cssMatch) {
-      const insertPos = cssMatch.index! + cssMatch[0].length
-      html = html.substring(0, insertPos) + cssLinkTag + html.substring(insertPos)
+  for (const target of installation.targets) {
+    let html: string
+    try {
+      html = await fs.readFile(target.htmlPath, 'utf-8')
     }
-    else {
-      const headClose = html.indexOf('</head>')
-      if (headClose !== -1) {
-        html = `${html.substring(0, headClose) + cssLinkTag}\n${html.substring(headClose)}`
+    catch (e: unknown) {
+      messages.push(`  ${target.label}: Unreadable: ${(e as Error).message}`)
+      continue
+    }
+
+    const backupPath = `${target.htmlPath}.bak`
+
+    if (!hasPatch(html)) {
+      messages.push(`  ${target.label}: Not patched`)
+      // An IDE update can replace the HTML and strand the backup. Drop it rather
+      // than leaving a file that a later restore would write over a newer build.
+      const staleHash = await hashFile(backupPath)
+      if (staleHash !== undefined && staleHash !== hashText(html)) {
+        await fs.unlink(backupPath).catch(() => {})
+        messages.push(`  ${target.label}: Removed stale backup from a previous IDE build`)
       }
+      continue
     }
 
-    // Inject Script tag before </html>
-    const scriptTag = `\t<!-- RTL Agents Support -->\n\t<script src="${relativeJsPath}"></script>\n`
-    const htmlClose = html.lastIndexOf('</html>')
-    if (htmlClose !== -1) {
-      html = html.substring(0, htmlClose) + scriptTag + html.substring(htmlClose)
+    // Reconstructing from the live file is always correct for the running build;
+    // the backup only serves as a cross-check.
+    const restored = stripInjected(html)
+    const restoredHash = hashText(restored)
+    const recorded = manifest?.targets.find(t => t.htmlPath === target.htmlPath)
+
+    if (recorded && recorded.originalHash !== restoredHash) {
+      messages.push(`  ${target.label}: Warning — restored content differs from the recorded original`)
     }
 
-    await fs.writeFile(installation.workbenchHtmlPath, html, 'utf-8')
-    messages.push('  workbench.html: Tags successfully injected')
-    changed = true
+    try {
+      await fs.writeFile(target.htmlPath, restored, 'utf-8')
+      messages.push(`  ${target.label}: Restored`)
+      changed = true
+    }
+    catch (e: unknown) {
+      if (isPermissionError(e)) {
+        permissionError = true
+      }
+      messages.push(`  ${target.label}: Restore failed: ${(e as Error).message}`)
+      continue
+    }
 
-    // 6. Strip checksum from product.json
-    await removeChecksum(installation, messages)
+    if (await exists(backupPath)) {
+      await fs.unlink(backupPath).catch(() => {})
+    }
   }
-  catch (e: unknown) {
-    const err = e as NodeJS.ErrnoException
-    if (err.code === 'EPERM' || err.code === 'EACCES') {
-      permissionError = true
-      messages.push(`  Permission denied: ${installation.workbenchHtmlPath}`)
-      messages.push('  Please run your IDE as Administrator (or apply sudo permissions on macOS).')
-    }
-    else {
-      messages.push(`  Error: ${err.message}`)
+
+  await restoreChecksums(installation, messages)
+
+  for (const fileName of [CSS_FILENAME, JS_FILENAME, MANIFEST_FILENAME]) {
+    const filePath = path.join(installation.workbenchDir, fileName)
+    if (await exists(filePath)) {
+      try {
+        await fs.unlink(filePath)
+        messages.push(`  Deleted ${fileName}`)
+      }
+      catch (e: unknown) {
+        messages.push(`  Failed to delete ${fileName}: ${(e as Error).message}`)
+      }
     }
   }
 
@@ -192,113 +425,25 @@ export async function addRtl(installation: IdeInstallation): Promise<{ messages:
 }
 
 /**
- * Remove patch and restore backups.
- */
-export async function removeRtl(installation: IdeInstallation): Promise<{ messages: string[], changed: boolean }> {
-  const messages: string[] = []
-  let changed = false
-
-  if (!(await isInstalled(installation))) {
-    messages.push(`  RTL not active in ${installation.ideName}`)
-    return { messages, changed }
-  }
-
-  // 1. Restore workbench.html
-  const htmlBackupPath = `${installation.workbenchHtmlPath}.bak`
-  let htmlRestored = false
-
-  if (await exists(htmlBackupPath)) {
-    try {
-      await fs.copyFile(htmlBackupPath, installation.workbenchHtmlPath)
-      await fs.unlink(htmlBackupPath)
-      messages.push('  workbench.html: Restored from backup')
-      htmlRestored = true
-      changed = true
-    }
-    catch (e: unknown) {
-      messages.push(`  workbench.html: Backup restore failed: ${(e as Error).message}. Attempting manual removal...`)
-    }
-  }
-
-  if (!htmlRestored) {
-    try {
-      let html = await fs.readFile(installation.workbenchHtmlPath, 'utf-8')
-
-      // Regex search to strip injected markup
-      html = html.replace(/\n?\t?<!-- RTL Agents Support -->\n\t<link[^>]*rtl-agents\.css[^>]*>/g, '')
-      html = html.replace(/\n?\t?<!-- RTL Agents Support -->\n\t<script[^>]*rtl-agents\.js[^>]*><\/script>\n?/g, '')
-
-      await fs.writeFile(installation.workbenchHtmlPath, html, 'utf-8')
-      messages.push('  workbench.html: Injected tags stripped manually')
-      changed = true
-    }
-    catch (e: unknown) {
-      messages.push(`  workbench.html: Manual tag removal failed: ${(e as Error).message}`)
-    }
-  }
-
-  // 2. Restore product.json
-  await restoreProductJson(installation, messages)
-
-  // 3. Delete static assets
-  const cssPath = path.join(installation.workbenchDir, CSS_FILENAME)
-  const jsPath = path.join(installation.workbenchDir, JS_FILENAME)
-
-  for (const filePath of [cssPath, jsPath]) {
-    if (await exists(filePath)) {
-      try {
-        await fs.unlink(filePath)
-        messages.push(`  Deleted asset file: ${path.basename(filePath)}`)
-      }
-      catch (e: unknown) {
-        messages.push(`  Failed to delete ${path.basename(filePath)}: ${(e as Error).message}`)
-      }
-    }
-  }
-
-  return { messages, changed }
-}
-
-/**
- * Re-inject Javascript/CSS assets if they are stale or missing, without touching workbench.html.
+ * Rewrite the CSS/JS assets without touching workbench HTML.
+ * Used when settings change or the extension is updated in place.
  */
 export async function reinjectAssets(
   installation: IdeInstallation,
-): Promise<{ messages: string[], changed: boolean, permissionError: boolean }> {
+  options: ContentOptions,
+): Promise<PatchResult> {
   const messages: string[] = []
+
   if (!(await isInstalled(installation))) {
     return { messages, changed: false, permissionError: false }
   }
 
   try {
-    const cssPath = path.join(installation.workbenchDir, CSS_FILENAME)
-    const jsPath = path.join(installation.workbenchDir, JS_FILENAME)
-
-    let cssMatches = false
-    let jsMatches = false
-
-    try {
-      cssMatches = (await fs.readFile(cssPath, 'utf-8')) === RTL_CSS
-      jsMatches = (await fs.readFile(jsPath, 'utf-8')) === RTL_JS
-    }
-    catch {
-      // If reading fails, file is missing or corrupted, so write it.
-    }
-
-    if (cssMatches && jsMatches) {
-      messages.push('  Assets: Already up to date with latest configuration')
-      return { messages, changed: false, permissionError: false }
-    }
-
-    await fs.writeFile(cssPath, RTL_CSS, 'utf-8')
-    await fs.writeFile(jsPath, RTL_JS, 'utf-8')
-    messages.push('  Assets: Re-written with updated configurations')
-    return { messages, changed: true, permissionError: false }
+    const changed = await writeAssets(installation, options, messages)
+    return { messages, changed, permissionError: false }
   }
   catch (e: unknown) {
-    const err = e as { code?: string, message: string }
-    const permissionError = err.code === 'EPERM' || err.code === 'EACCES'
-    messages.push(`  Asset reinjection failed: ${err.message}`)
-    return { messages, changed: false, permissionError }
+    messages.push(`  Asset refresh failed: ${(e as Error).message}`)
+    return { messages, changed: false, permissionError: isPermissionError(e) }
   }
 }
