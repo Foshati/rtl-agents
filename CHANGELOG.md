@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-08-16
+
+Rewrite of the injection layer. Fixes [#25](https://github.com/Foshati/rtl-agents/issues/25).
+
+### Fixed
+- **Antigravity 2.5.5 support**: response text stopped aligning because the targeted class combination no longer exists. Antigravity now renders every response paragraph as `div.animate-markdown` with one `<span>` per streamed word; the old `.leading-relaxed.select-text > p` selectors matched nothing.
+- **Toggle button did nothing**: the injected button used `href="command:rtl-agents.toggle"`. The `command:` scheme only resolves inside webviews and trusted markdown, never from a plain anchor in the workbench, so no click ever reached the extension. It now toggles locally and clicks the status bar item to notify the extension host.
+- **Status bar never synced**: the runtime looked for `.status-bar-item`; the real VS Code class is `.statusbar-item`. State was read back as `null` every time, leaving the extension and the DOM permanently out of step.
+- **The button could not be removed**: disabling or uninstalling the extension left the button in the header with nothing behind it. The runtime now watches for the status bar item disappearing and tears itself down.
+- **Antigravity's separate agent window** (`workbench-jetski-agent.html`) was never patched, so RTL never applied there.
+- **Stale backups could corrupt an updated IDE**: `workbench.html.bak` from an older build could be restored over a newer one. Backups are now hash-verified against the running build, restores are reconstructed from the live file, and mismatched backups are discarded instead of applied.
+- **`product.json` restore** no longer copies the whole backup over a possibly-updated file; only the checksum keys we removed are put back, byte-identically when nothing else changed.
+- **Settings did nothing**: `customSelectors` was declared but the CSS/JS were hard-coded constants. It now shapes the generated stylesheet, applied as soon as the setting changes.
+
+### Changed
+- **Direction is now pure CSS** (`unicode-bidi: plaintext` + `text-align: start`). The browser resolves direction per paragraph from the first strong directional character — the same decision the old regex made, but at layout time. This removes the visible left-to-right jump while a reply streams, and removes the per-word JavaScript that caused it.
+- **No document-wide `MutationObserver`**. Streaming a reply used to fire the observer on every word, each time re-running `querySelectorAll` and serialising `textContent` across the whole chat. The runtime now watches only the status bar item and the chat header container.
+- The injected `<script>` is loaded from `<head>` so the root class is set before the first paint. It is an external file, not inline — the workbench CSP allows `script-src 'self'` but not `'unsafe-inline'`.
+- Injected markup is wrapped in `<!-- RTL-AGENTS-BEGIN/END -->` sentinels, making removal exact. v1 markup is still recognised and cleaned up on upgrade.
+- **First run no longer patches the IDE unannounced** — it asks first.
+- Added `pnpm test`, covering the patch/unpatch round trip, idempotency, checksum handling, stale-backup recovery, v1 cleanup, and asset generation.
+
+### Deprecated
+- `rtl-agents.rtlCharacterRegex` is ignored; native BiDi resolution replaces it.
+
 ## [1.8.0] - 2026-07-17
 
 ### Added

@@ -14,14 +14,15 @@ Specifically optimized for **Persian**, **Arabic**, and **Hebrew** languages.
 
 ## ✨ Key Features
 
-*   **🌐 Multi-IDE Support**: Automatically detects and patches active IDE resources for VS Code, Cursor, Windsurf, VSCodium, and Antigravity.
-*   **⚡ Smart Bidirectional (BiDi) Text Alignment**: Does not flip the entire editor window. It scans text inside chat bubbles and shifts only the elements containing RTL characters (Persian/Arabic/Hebrew) to the right.
-*   **🛡️ Code Block & Layout Safety**: Keeps code syntax blocks (`pre`, `code`), Monaco editors, data tables, SVG icons, and action buttons in LTR, ensuring your coding workspace remains intact.
-*   **⇄ Seamless Header Integration**: Places a beautiful toggle button (`⇄`) directly inside the chat panel header (next to the "New Chat" button). It matches the theme and button design of your editor.
-*   **💾 Persistency**: Saves your toggled preference in the editor sandbox `localStorage` so it persists across reloads and new window sessions.
-*   **🔑 Checksum Bypass**: Removes workbench checksum keys from `product.json` to prevent the IDE from triggering the annoying `[Unsupported]` or "Installation is corrupt" warning.
-*   **⚙️ Custom Selectors & Configuration**: Customize target CSS selectors and the RTL character detection regex patterns directly in VS Code settings.
-*   **🔄 Auto-Reactivation**: Detects editor updates and automatically prompts you to re-apply the patch in one click.
+*   **🌐 Multi-IDE Support**: Automatically detects and patches every workbench document of the running IDE — VS Code, Cursor, Windsurf, VSCodium, and Antigravity (including Antigravity's separate agent window).
+*   **⚡ Native Bidirectional (BiDi) Alignment**: Direction is resolved by the browser itself, per paragraph, from the first strong directional character — `unicode-bidi: plaintext`. A Persian paragraph goes right, an English one stays left, inside the same reply.
+*   **✨ Zero Flicker While Streaming**: Because alignment is pure CSS, it is applied at layout time, before the first paint. Streamed text never renders LTR and then jumps. There is no per-word JavaScript, no document-wide `MutationObserver`, and no measurable CPU cost while a reply is generating.
+*   **🛡️ Code Block & Layout Safety**: `pre`, `code`, Monaco editors, and table column order stay LTR, so your coding workspace and any code inside a Persian sentence remain readable.
+*   **⇄ Seamless Header Integration**: Places a toggle button (`⇄`) directly inside the chat panel header, next to the "New Chat" button, borrowing its styling. The status bar item and the header button always agree.
+*   **💾 Persistency**: Remembers your preference across reloads, and keeps every patched window in sync instantly.
+*   **🔑 Checksum Bypass**: Removes the relevant workbench checksum keys from `product.json` to prevent the `[Unsupported]` / "Installation is corrupt" warning, restoring them exactly on deactivation.
+*   **♻️ Clean Uninstall**: Deactivating removes the toggle button immediately, and restores every patched file byte for byte. A backup left over from an older IDE build is never written over a newer one.
+*   **🔄 Auto-Reactivation**: Detects editor updates and re-applies the patch, prompting for a restart.
 
 ---
 
@@ -47,15 +48,16 @@ You can customize the extension via your `settings.json`:
 ```json
 {
   "rtl-agents.customSelectors": [
-    ".my-custom-chat-element p",
-    "div[class*=\"custom-message\"] li"
-  ],
-  "rtl-agents.rtlCharacterRegex": "[\\u0590-\\u05FF\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF]"
+    ".my-custom-chat-panel",
+    "div[class*=\"custom-message-list\"]"
+  ]
 }
 ```
 
-*   `rtl-agents.customSelectors`: List of additional CSS selector patterns you want to monitor for RTL text.
-*   `rtl-agents.rtlCharacterRegex`: Customize the regular expression used to trigger RTL matching.
+*   `rtl-agents.customSelectors`: Additional **chat container** selectors. Text inside them picks its own direction per paragraph, exactly like the built-in containers. Changing this rewrites the injected stylesheet right away — no re-patch needed.
+
+> [!NOTE]
+> `rtl-agents.rtlCharacterRegex` is deprecated as of v2.0.0 and ignored. Direction is now resolved natively by the browser, so there is no character list to configure.
 
 ---
 
@@ -68,6 +70,19 @@ You can customize the extension via your `settings.json`:
 | **`RTL Agents: Toggle RTL/LTR`** | `Ctrl+Alt+R` / `Cmd+Ctrl+R` | Toggles the active status on the fly. |
 | **`RTL Agents: Check Status`** | - | Displays the patch status of all installations in an output channel. |
 | **`RTL Agents: Restart RTL`** | - | Restores original files first, then re-applies the patch. |
+
+---
+
+## 🧪 Development
+
+```bash
+pnpm install
+pnpm build   # bundle the extension
+pnpm test    # patch/unpatch round-trip and asset generation checks
+pnpm lint
+```
+
+`pnpm test` exercises the patch layer against synthetic fixtures in a temp directory — it never touches a real IDE installation.
 
 ---
 
