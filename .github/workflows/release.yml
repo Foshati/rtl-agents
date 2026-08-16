@@ -15,6 +15,13 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+
+    # Lifted to the job so the publish steps can gate on presence: the `secrets`
+    # context is not available in a step-level `if`, but `env` is.
+    env:
+      OPEN_VSX_TOKEN: ${{ secrets.OPEN_VSX_TOKEN }}
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,14 +38,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build VSIX
-        run: npx vsce package --no-dependencies
+      - name: Run tests
+        run: pnpm test
 
       - name: Get version from package.json
         id: version
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "vsix=rtl-agents-$VERSION.vsix" >> "$GITHUB_OUTPUT"
+
+      - name: Build VSIX
+        run: npx @vscode/vsce package --no-dependencies
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -47,7 +58,7 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
           files: |
-            rtl-agents-${{ steps.version.outputs.version }}.vsix
+            ${{ steps.version.outputs.vsix }}
           body: |
             ## ✨ RTL Agent v${{ steps.version.outputs.version }}
 
@@ -55,17 +66,17 @@ jobs:
 
             ### 🛠 Manual Installation
 
-            Download `rtl-agents-${{ steps.version.outputs.version }}.vsix` and run:
+            Download `${{ steps.version.outputs.vsix }}` and run:
 
             ```bash
             # VS Code
-            code --install-extension rtl-agents-${{ steps.version.outputs.version }}.vsix --force
+            code --install-extension ${{ steps.version.outputs.vsix }} --force
 
             # Cursor
-            cursor --install-extension rtl-agents-${{ steps.version.outputs.version }}.vsix --force
+            cursor --install-extension ${{ steps.version.outputs.vsix }} --force
 
             # Antigravity
-            antigravity --install-extension rtl-agents-${{ steps.version.outputs.version }}.vsix --force
+            antigravity --install-extension ${{ steps.version.outputs.vsix }} --force
             ```
 
             ### 🌍 Features
@@ -74,6 +85,73 @@ jobs:
             - Customizable fonts and styling
           generate_release_notes: true
 
+      # A publish step is skipped when its token is absent, and fails the run when
+      # the token is present but the upload does not land. A green run sitting on
+      # top of a stale registry is what `continue-on-error` used to hide.
+
       - name: Publish to Open VSX
-        run: npx ovsx publish rtl-agents-${{ steps.version.outputs.version }}.vsix -p ${{ secrets.OPEN_VSX_TOKEN }}
-        continue-on-error: true
+        id: ovsx
+        if: env.OPEN_VSX_TOKEN != ''
+        run: npx ovsx publish "${{ steps.version.outputs.vsix }}" -p "$OPEN_VSX_TOKEN"
+
+      - name: Publish to VS Code Marketplace
+        id: vsce
+        if: env.VSCE_PAT != ''
+        run: npx @vscode/vsce publish --packagePath "${{ steps.version.outputs.vsix }}" --pat "$VSCE_PAT"
+
+      - name: Report skipped registries
+        if: env.OPEN_VSX_TOKEN == '' || env.VSCE_PAT == ''
+        run: |
+          {
+            echo "### ⚠️ Registries not published"
+            echo
+            [ -z "$OPEN_VSX_TOKEN" ] && echo "- **Open VSX** — \`OPEN_VSX_TOKEN\` secret is not set."
+            [ -z "$VSCE_PAT" ] && echo "- **VS Code Marketplace** — \`VSCE_PAT\` secret is not set."
+            echo
+            echo "Add them under Settings → Secrets and variables → Actions."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify published versions
+        if: always() && (steps.ovsx.outcome == 'success' || steps.vsce.outcome == 'success')
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CHECK_OVSX: ${{ steps.ovsx.outcome }}
+          CHECK_VSCE: ${{ steps.vsce.outcome }}
+        run: |
+          open_vsx_version() {
+            curl -sf https://open-vsx.org/api/foshati/rtl-agents \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))'
+          }
+
+          marketplace_version() {
+            curl -sf -X POST https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery \
+              -H 'Accept: application/json;api-version=3.0-preview.1' \
+              -H 'Content-Type: application/json' \
+              -d '{"filters":[{"criteria":[{"filterType":7,"value":"foshati.rtl-agents"}]}],"flags":914}' \
+              | python3 -c 'import json,sys; e=json.load(sys.stdin)["results"][0]["extensions"]; print(e[0]["versions"][0]["version"] if e else "")'
+          }
+
+          # Both registries index asynchronously, so poll instead of assuming.
+          poll() {
+            label="$1"; fn="$2"; live=""
+            for attempt in $(seq 1 10); do
+              live=$("$fn" 2>/dev/null || true)
+              if [ "$live" = "$VERSION" ]; then
+                echo "$label is serving $VERSION"
+                return 0
+              fi
+              echo "$label reports '${live:-none}', waiting for '$VERSION' ($attempt/10)"
+              sleep 30
+            done
+            echo "::error::$label never reached $VERSION (last seen '${live:-none}')"
+            return 1
+          }
+
+          failed=0
+          if [ "$CHECK_OVSX" = "success" ]; then
+            poll "Open VSX" open_vsx_version || failed=1
+          fi
+          if [ "$CHECK_VSCE" = "success" ]; then
+            poll "VS Code Marketplace" marketplace_version || failed=1
+          fi
+          exit "$failed"
