@@ -1,49 +1,77 @@
-# ⇄ RTL Agents
+<div align="center">
+  <img src="https://raw.githubusercontent.com/Foshati/rtl-agents/main/public/icon.png" alt="RTL Agents logo" width="120">
+  <h1>RTL Agents</h1>
+  <p><strong>Right-to-Left Support for AI Chat Panels in Your Editor</strong></p>
 
-A professional VS Code extension that enables robust **Right-to-Left (RTL)** support for AI Chat interfaces (including **Cursor**, **VS Code**, **Windsurf**, **VSCodium**, and **Antigravity**) while keeping code blocks, tables, and system UI elements properly aligned in **Left-to-Right (LTR)**.
-
-Specifically optimized for **Persian**, **Arabic**, and **Hebrew** languages.
-
----
-
-<p align="center">
-  <img src="public/screenshot.png" alt="RTL Agents Showcase" width="100%" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
-</p>
-
----
-
-## ✨ Key Features
-
-*   **🌐 Multi-IDE Support**: Automatically detects and patches every workbench document of the running IDE — VS Code, Cursor, Windsurf, VSCodium, and Antigravity (including Antigravity's separate agent window).
-*   **⚡ Native Bidirectional (BiDi) Alignment**: Direction is resolved by the browser itself, per paragraph, from the first strong directional character — `unicode-bidi: plaintext`. A Persian paragraph goes right, an English one stays left, inside the same reply.
-*   **✨ Zero Flicker While Streaming**: Because alignment is pure CSS, it is applied at layout time, before the first paint. Streamed text never renders LTR and then jumps. There is no per-word JavaScript, no document-wide `MutationObserver`, and no measurable CPU cost while a reply is generating.
-*   **🛡️ Code Block & Layout Safety**: `pre`, `code`, Monaco editors, and table column order stay LTR, so your coding workspace and any code inside a Persian sentence remain readable.
-*   **⇄ Seamless Header Integration**: Places a toggle button (`⇄`) directly inside the chat panel header, next to the "New Chat" button, borrowing its styling. The status bar item and the header button always agree.
-*   **💾 Persistency**: Remembers your preference across reloads, and keeps every patched window in sync instantly.
-*   **🔑 Checksum Bypass**: Removes the relevant workbench checksum keys from `product.json` to prevent the `[Unsupported]` / "Installation is corrupt" warning, restoring them exactly on deactivation.
-*   **♻️ Clean Uninstall**: Deactivating removes the toggle button immediately, and restores every patched file byte for byte. A backup left over from an older IDE build is never written over a newer one.
-*   **🔄 Auto-Reactivation**: Detects editor updates and re-applies the patch, prompting for a restart.
+  <p>
+    <a href="https://github.com/Foshati/rtl-agents/blob/main/package.json"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FFoshati%2Frtl-agents%2Fmain%2Fpackage.json&query=%24.version&label=version&color=blue" alt="Version"></a>
+    <a href="https://code.visualstudio.com"><img src="https://img.shields.io/badge/vscode-%5E1.80.0-green" alt="VS Code"></a>
+    <a href="https://github.com/Foshati/rtl-agents/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple" alt="License"></a>
+  </p>
+</div>
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Overview
 
-Because this extension modifies the workbench UI elements on disk to enable deep integration, it requires a simple, one-time activation.
+**`RTL Agents`** brings proper **Right-to-Left** rendering to the AI chat panels of **Antigravity**, **Cursor**, **VS Code**, **Windsurf**, and **VSCodium** — without flipping your editor, your code, or your tables.
 
-1.  Open the Command Palette (`Ctrl+Shift+P` on Windows/Linux or `Cmd+Shift+P` on macOS).
-2.  Type and run: **`RTL Agents: Activate RTL`**.
-3.  **Fully quit and restart** your IDE (doing a simple "Reload Window" is not enough).
-4.  Open your AI Chat and enjoy proper RTL alignment!
+Direction is resolved by the browser itself, per paragraph, from the first strong directional character. A Persian paragraph aligns right, an English one stays left, and both can live in the same reply. Because it is pure CSS applied at layout time, streamed text never renders left-aligned and then jumps.
+
+Optimized for **Persian**, **Arabic**, and **Hebrew**.
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/Foshati/rtl-agents/main/public/screenshot.png" alt="RTL Agents running in Antigravity" width="750" style="border-radius: 8px;">
+  <p><em>Persian AI responses aligned right, with code blocks and UI left intact</em></p>
+</div>
+
+---
+
+## ✨ Features
+
+- 🌐 **Multi-IDE Support**: Detects the running editor and patches every workbench document it owns — including Antigravity's separate agent window.
+- ⚡ **Native Bidirectional Alignment**: Uses `unicode-bidi: plaintext`, so the browser resolves direction per paragraph. No character regex to maintain, no guessing.
+- ✨ **Zero Flicker While Streaming**: Alignment lands before the first paint. There is no per-word JavaScript, no document-wide `MutationObserver`, and no measurable CPU cost while a reply generates.
+- 🛡️ **Code & Layout Safety**: `pre`, `code`, Monaco editors, and table column order stay LTR — including a code snippet sitting inside a Persian sentence.
+- ⇄ **Native Toggle Button**: Injects a `⇄` button into the chat header next to "New Chat", borrowing its styling. The header button and the status bar item always agree.
+- 💾 **Persistent & Synced**: Remembers your preference across reloads and keeps every patched window in step instantly.
+- 🔑 **Checksum Bypass**: Strips the relevant `product.json` checksums to avoid the `[Unsupported]` warning, and restores them exactly on deactivation.
+- ♻️ **Clean Uninstall**: Deactivating removes the button immediately and restores every file byte for byte. A backup from an older IDE build is never written over a newer one.
+- 🔄 **Auto-Reactivation**: Detects editor updates and re-applies the patch.
+
+---
+
+## 📦 Installation
+
+Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=foshati.rtl-agents) or [Open VSX](https://open-vsx.org/extension/foshati/rtl-agents), or grab the `.vsix` from [Releases](https://github.com/Foshati/rtl-agents/releases/latest):
+
+```bash
+# VS Code
+code --install-extension rtl-agents-<version>.vsix --force
+
+# Cursor
+cursor --install-extension rtl-agents-<version>.vsix --force
+
+# Antigravity
+antigravity --install-extension rtl-agents-<version>.vsix --force
+```
+
+### Activate
+
+Because the extension modifies workbench files on disk to reach the chat panel, it needs a one-time activation.
+
+1. Open the Command Palette — `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (macOS).
+2. Run **`RTL Agents: Activate RTL`**.
+3. **Fully quit and reopen** your IDE. A "Reload Window" is not enough.
+4. Open the AI chat and press `Ctrl+Alt+R` / `Cmd+Ctrl+R`, or click the `⇄` button.
 
 > [!TIP]
-> **Permission Denied on macOS/Linux?**
-> This is normal since editor files on disk are write-protected. Running the command will output a copyable shell fix command (e.g., `sudo chown ...`). Copy it, run it in your Terminal, then run `RTL Agents: Activate RTL` again.
+> **Permission denied on macOS or Linux?**
+> Editor files on disk are write-protected, so this is expected. The command outputs a copyable `sudo chown ...` fix — run it in your terminal, then activate again.
 
 ---
 
 ## ⚙️ Configuration
-
-You can customize the extension via your `settings.json`:
 
 ```json
 {
@@ -54,7 +82,7 @@ You can customize the extension via your `settings.json`:
 }
 ```
 
-*   `rtl-agents.customSelectors`: Additional **chat container** selectors. Text inside them picks its own direction per paragraph, exactly like the built-in containers. Changing this rewrites the injected stylesheet right away — no re-patch needed.
+- `rtl-agents.customSelectors` — Additional **chat container** selectors. Text inside them resolves direction per paragraph, exactly like the built-in containers. Editing this rewrites the injected stylesheet right away; no re-patch needed.
 
 > [!NOTE]
 > `rtl-agents.rtlCharacterRegex` is deprecated as of v2.0.0 and ignored. Direction is now resolved natively by the browser, so there is no character list to configure.
@@ -65,11 +93,11 @@ You can customize the extension via your `settings.json`:
 
 | Command | Shortcut | Description |
 | :--- | :--- | :--- |
-| **`RTL Agents: Activate RTL`** | - | Injects the CSS/JS and removes checksums. |
-| **`RTL Agents: Deactivate RTL`** | - | Restores the IDE files back to their clean original states. |
-| **`RTL Agents: Toggle RTL/LTR`** | `Ctrl+Alt+R` / `Cmd+Ctrl+R` | Toggles the active status on the fly. |
-| **`RTL Agents: Check Status`** | - | Displays the patch status of all installations in an output channel. |
-| **`RTL Agents: Restart RTL`** | - | Restores original files first, then re-applies the patch. |
+| **`RTL Agents: Activate RTL`** | — | Injects the CSS/JS and strips workbench checksums. |
+| **`RTL Agents: Toggle RTL/LTR`** | `Ctrl+Alt+R` / `Cmd+Ctrl+R` | Switches direction instantly. |
+| **`RTL Agents: Deactivate RTL`** | — | Restores every patched file to its original state. |
+| **`RTL Agents: Check Status`** | — | Reports which workbench documents are patched. |
+| **`RTL Agents: Restart RTL`** | — | Restores originals, then re-applies the patch. |
 
 ---
 
@@ -78,7 +106,7 @@ You can customize the extension via your `settings.json`:
 ```bash
 pnpm install
 pnpm build   # bundle the extension
-pnpm test    # patch/unpatch round-trip and asset generation checks
+pnpm test    # patch/unpatch round trip and asset generation
 pnpm lint
 ```
 
