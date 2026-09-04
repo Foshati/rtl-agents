@@ -2,7 +2,7 @@
   "publisher": "foshati",
   "name": "rtl-agents",
   "displayName": "RTL Agents",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "packageManager": "pnpm@10.22.0",
   "description": "Professional RTL/LTR toggle support for AI Chats (Cursor, VS Code, Windsurf, VSCodium, Antigravity) with code block alignment safety.",
   "author": "Foshati",
@@ -62,19 +62,32 @@
     "configuration": {
       "title": "RTL Agents",
       "properties": {
+        "rtl-agents.baseDirection": {
+          "type": "string",
+          "enum": [
+            "rtl",
+            "auto"
+          ],
+          "enumDescriptions": [
+            "Pin chat text to a right-to-left base. Correct for Persian, Arabic and Hebrew conversations, including sentences that open with an English term.",
+            "Let each paragraph pick its direction from its first strong character. Only preferable when the chat is mostly left-to-right with occasional RTL passages."
+          ],
+          "default": "rtl",
+          "markdownDescription": "Base direction for rendered chat text.\n\n`rtl` pins every message block to a right-to-left base. `auto` restores the pre-2.1 per-paragraph detection, which mis-aligns Persian sentences that begin with a Latin term such as `API` or `npm install`."
+        },
         "rtl-agents.customSelectors": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "default": [],
-          "description": "Additional chat container selectors to enable RTL inside. Text direction is resolved per paragraph within these containers."
+          "description": "Additional chat container selectors to enable RTL inside. Text in them follows the same base direction as the built-in containers."
         },
         "rtl-agents.rtlCharacterRegex": {
           "type": "string",
           "default": "",
           "description": "No longer used.",
-          "deprecationMessage": "Deprecated since v2.0.0. Direction is now resolved natively per paragraph by the browser (unicode-bidi: plaintext), so no character regex is needed."
+          "deprecationMessage": "Deprecated since v2.0.0. Direction is resolved by the browser, not by scanning characters. See rtl-agents.baseDirection."
         }
       }
     },

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-09-05
+
+### Fixed
+- **Persian sentences opening with a Latin term rendered left-to-right.** `unicode-bidi: plaintext` resolves a paragraph's direction from its first strong directional character (Unicode BiDi P2/P3). In Persian technical prose sentences constantly open with one — `API لایه…`, `OTP ارسال‌شده…`, `npm install را…`, `PostgreSQL با…` — and every such paragraph flipped entirely to LTR: left-aligned, with its trailing Persian period or colon stranded on the wrong side. Measured against a representative 30-line corpus, 12 lines (40%) misfired. Message text is now pinned to an RTL base instead of detected.
+- **List markers and indentation sat on the left of right-aligned text.** The stylesheet set `unicode-bidi` and `text-align` but never `direction`, and a `::marker` is placed according to the list item's `direction` while the UA indent resolves against the list's. `ul` and `ol` now carry the base direction along with `li`.
+- **Inline `<code>` was force-aligned.** `text-align: left` applied to every LTR-guarded selector including inline code, fighting the alignment of the paragraph containing it. Alignment is now pinned only on block-level code containers; inline code keeps `direction: ltr` with `unicode-bidi: isolate`, which is what preserves its order.
+
+### Added
+- **`rtl-agents.baseDirection`** — `rtl` (default) pins message text to a right-to-left base; `auto` restores per-paragraph first-strong resolution for chats that are mostly left-to-right. Changing it rewrites the stylesheet immediately.
+- The composer (`textarea`, `contenteditable`) keeps per-paragraph resolution in both modes, so it still flips live as you type.
+- A 30-line Persian corpus in `test/corpus.ts` with a first-strong detector, cross-checked against a Unicode BiDi reference implementation (agrees on all 30 lines). Seven new tests guard the base direction, list handling, inline-code alignment, composer behaviour and the `auto` opt-in; each was mutation-tested to confirm it actually fails when the corresponding rule is reverted.
+
+### Note
+Pinning the base costs one thing: an all-English paragraph is right-aligned, with its word order untouched. That is how LTR passages sit in an RTL document, and `baseDirection: "auto"` restores the old behaviour for anyone who prefers it.
+
 ## [2.0.0] - 2026-08-16
 
 Rewrite of the injection layer. Fixes [#25](https://github.com/Foshati/rtl-agents/issues/25).

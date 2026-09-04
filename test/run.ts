@@ -24,6 +24,7 @@ import {
   stripInjected,
 } from '../src/content'
 import { addRtl, getStatus, isFullyInstalled, removeRtl } from '../src/injector'
+import { firstStrongDirection, PERSIAN_CORPUS } from './corpus'
 
 const FIXTURES = path.resolve(process.cwd(), 'test', 'fixtures')
 const WB_REL = path.join('out', 'vs', 'code', 'electron-browser', 'workbench')
@@ -88,7 +89,15 @@ async function makeInstallation(docs: Record<string, string>): Promise<IdeInstal
   }
 }
 
-const OPTIONS = { customSelectors: [], extensionVersion: '2.0.0' }
+const OPTIONS = { customSelectors: [], baseDirection: 'rtl' as const, extensionVersion: '2.1.0' }
+const RTL = { customSelectors: [], baseDirection: 'rtl' as const }
+const AUTO = { customSelectors: [], baseDirection: 'auto' as const }
+
+/** The rule that carries the base direction for rendered message text. */
+function messageTextRule(css: string): string {
+  const start = css.indexOf('Message text')
+  return css.slice(start, css.indexOf('Composer'))
+}
 
 async function main(): Promise<void> {
   const base = await fs.readFile(path.join(FIXTURES, 'workbench.html'), 'utf-8')
@@ -205,9 +214,9 @@ async function main(): Promise<void> {
 
   group('generated assets')
 
-  await test('CSS resolves direction natively, with no JS in the path', () => {
-    const css = buildCss({ customSelectors: [] })
-    assert.match(css, /unicode-bidi: plaintext/)
+  await test('CSS pins an RTL base and needs no JS in the direction path', () => {
+    const css = buildCss(RTL)
+    assert.match(messageTextRule(css), /direction: rtl !important/)
     assert.match(css, /html\.rtl-agents-on/)
     // The container Antigravity 2.5.5 renders each response paragraph into.
     assert.match(css, /\.animate-markdown/)
@@ -215,7 +224,7 @@ async function main(): Promise<void> {
   })
 
   await test('CSS keeps code and table layout LTR', () => {
-    const css = buildCss({ customSelectors: [] })
+    const css = buildCss(RTL)
     const guard = css.slice(css.indexOf('Layout safety'))
     assert.match(guard, /\bpre\b/)
     assert.match(guard, /\bcode\b/)
@@ -223,11 +232,11 @@ async function main(): Promise<void> {
   })
 
   await test('customSelectors reach the stylesheet', () => {
-    assert.match(buildCss({ customSelectors: ['.my-chat'] }), /\.my-chat/)
+    assert.match(buildCss({ ...RTL, customSelectors: ['.my-chat'] }), /\.my-chat/)
   })
 
   await test('runtime is valid JS and avoids the v1 failure modes', () => {
-    const js = buildJs({ customSelectors: [] })
+    const js = buildJs(RTL)
     // eslint-disable-next-line no-new-func
     void new Function(js)
     assert.match(js, /\.statusbar-item/, 'must use the real VS Code status bar class')
@@ -235,6 +244,76 @@ async function main(): Promise<void> {
     assert.doesNotMatch(js, /command:rtl-agents/, 'command: hrefs do not work in the workbench')
     assert.doesNotMatch(js, /observe\(\s*(?:DOC|document)\.body/, 'no document-wide observer')
     assert.match(js, /selfDestruct/, 'must clean up when the extension goes away')
+  })
+
+  group('base direction')
+
+  await test('the corpus still exercises the first-strong hazard', () => {
+    const ltrFirst = PERSIAN_CORPUS.filter(l => firstStrongDirection(l) === 'ltr')
+    assert.ok(
+      ltrFirst.length >= 10,
+      `only ${ltrFirst.length} corpus lines open with a strong LTR character — the corpus no longer covers the bug`,
+    )
+    // Every line is Persian prose; none should be genuinely left-to-right.
+    for (const line of PERSIAN_CORPUS) {
+      assert.ok(/[\u0600-\u06FF]/.test(line), `not Persian: ${line}`)
+    }
+  })
+
+  await test('default mode does not resolve direction from the first character', () => {
+    const rule = messageTextRule(buildCss(RTL))
+    assert.match(rule, /direction: rtl !important/)
+    assert.doesNotMatch(
+      rule,
+      /unicode-bidi: plaintext/,
+      'first-strong resolution mis-aligns the ~40% of Persian lines that open with a Latin term',
+    )
+    assert.match(rule, /text-align: right !important/)
+  })
+
+  await test('lists carry the base direction, so markers and indent follow the text', () => {
+    // ::marker sits on the side given by the list item's `direction`, and the UA
+    // indent resolves against the list's — both stay left if only `li` is styled.
+    const rule = messageTextRule(buildCss(RTL))
+    assert.match(rule, /\bul\b/)
+    assert.match(rule, /\bol\b/)
+    assert.match(rule, /\bli\b/)
+  })
+
+  await test('inline code keeps LTR order without being force-aligned', () => {
+    const css = buildCss(RTL)
+    const isolation = css.slice(css.indexOf('Isolation keeps'), css.indexOf('Alignment is pinned'))
+    assert.match(isolation, /\bcode\b/)
+    assert.match(isolation, /direction: ltr !important/)
+    assert.match(isolation, /unicode-bidi: isolate !important/)
+
+    // text-align applies to block boxes only — never to a bare inline <code>.
+    const alignment = css.slice(css.indexOf('Alignment is pinned'), css.indexOf('Column order'))
+    assert.match(alignment, /text-align: left !important/)
+    assert.doesNotMatch(alignment, /(?:^|[(,\s])code[),\s]/, 'inline <code> must not be force-aligned')
+  })
+
+  await test('the composer resolves per paragraph in both modes', () => {
+    for (const opts of [RTL, AUTO]) {
+      const css = buildCss(opts)
+      const composer = css.slice(css.indexOf('Composer'), css.indexOf('Layout safety'))
+      assert.match(composer, /textarea/)
+      assert.match(composer, /unicode-bidi: plaintext !important/)
+    }
+  })
+
+  await test('auto mode restores per-paragraph resolution as an opt-in', () => {
+    const rule = messageTextRule(buildCss(AUTO))
+    assert.match(rule, /unicode-bidi: plaintext !important/)
+    assert.doesNotMatch(rule, /direction: rtl/)
+    // Lists stay LTR in auto mode: a mostly-English chat wants left markers.
+    assert.doesNotMatch(rule, /,\s*ul,\s*ol\)/)
+  })
+
+  await test('the two modes produce different stylesheets', () => {
+    assert.notEqual(buildCss(RTL), buildCss(AUTO))
+    assert.match(buildCss(RTL), /base direction: rtl/)
+    assert.match(buildCss(AUTO), /base direction: auto/)
   })
 
   console.log(`\n${passed} passed, ${failed} failed\n`)

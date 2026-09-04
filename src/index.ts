@@ -1,4 +1,4 @@
-import type { ContentOptions, PatchOptions, RtlMode } from './types'
+import type { BaseDirection, ContentOptions, PatchOptions, RtlMode } from './types'
 import * as vscode from 'vscode'
 import { findIdeInstallations } from './finder'
 import { addRtl, getStatus, isFullyInstalled, reinjectAssets, removeRtl } from './injector'
@@ -24,8 +24,10 @@ function getOutputChannel(): vscode.OutputChannel {
 function getContentOptions(): ContentOptions {
   const config = vscode.workspace.getConfiguration('rtl-agents')
   const custom = config.get<string[]>('customSelectors', [])
+  const base = config.get<BaseDirection>('baseDirection', 'rtl')
   return {
     customSelectors: custom.map(s => s.trim()).filter(Boolean),
+    baseDirection: base === 'auto' ? 'auto' : 'rtl',
   }
 }
 

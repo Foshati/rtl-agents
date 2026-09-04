@@ -61,10 +61,22 @@ export interface RtlStatus {
   productBackupExists: boolean
 }
 
+/**
+ * Base direction applied to rendered chat text.
+ *
+ * `rtl` pins every message block to an RTL base, which is what a Persian,
+ * Arabic or Hebrew conversation wants. `auto` restores the pre-2.1 behaviour of
+ * letting each paragraph pick its own direction from its first strong character
+ * — better only when the chat is mostly LTR with occasional RTL passages.
+ */
+export type BaseDirection = 'rtl' | 'auto'
+
 /** Options that shape the generated CSS/JS assets */
 export interface ContentOptions {
   /** Extra container selectors supplied by the user */
   customSelectors: string[]
+  /** Base direction for rendered message text */
+  baseDirection: BaseDirection
 }
 
 /** Options for a patch operation */
