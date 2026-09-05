@@ -88,6 +88,8 @@ Because the extension modifies workbench files on disk to reach the chat panel, 
 
 > [!NOTE]
 > Why the base is pinned rather than detected: first-strong detection reads the direction from a paragraph's first strong character, so an ordinary Persian sentence opening with `API`, `OTP` or `npm install` flips entirely to LTR — left-aligned, with its trailing Persian punctuation on the wrong side. On a representative corpus that misfires on about 40% of lines. The cost of pinning is that an all-English paragraph is right-aligned, word order intact, which is simply how LTR passages sit in an RTL document.
+>
+> Pinning `direction` is only half the job. Hosts indent lists and draw quote bars with *physical* properties (`padding-left`, `border-left`) that do not follow direction, so those are zeroed and restored on the logical start side as well.
 
 > [!NOTE]
 > `rtl-agents.rtlCharacterRegex` is deprecated as of v2.0.0 and ignored — direction is resolved by the browser, not by scanning characters.

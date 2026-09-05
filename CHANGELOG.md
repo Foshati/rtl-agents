@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-09-05
+
+### Fixed
+- **List numbers and bullets still sat on the left after 2.1.0.** Pinning `direction: rtl` moves the `::marker`, but the host indents lists with a *physical* property — Antigravity compiles `[&_ol]:pl-10` and `[&>ol]:!pl-4` to `padding-left`, which does not follow `direction`. The indent stayed on the left and the marker, now on the right, had no room to sit in. The physical padding is zeroed and the indent restored with `padding-inline-start`; task lists keep their zero indent, having no marker to make room for.
+- **Blockquote bar on the wrong side.** Antigravity draws it with an inline `borderLeft`. Cleared and redrawn with `border-inline-start`; a stylesheet `!important` outranks an inline style.
+- **Manifest kept reporting the version that first applied the patch.** Extension updates rewrite the assets through `reinjectAssets` without touching workbench HTML, and only `addRtl` wrote the manifest — so `rtl-agents.manifest.json` said `2.0.0` beside a `2.1.0` stylesheet. The version is now refreshed whenever assets are reinjected.
+
+### Testing
+- Seven tests cover the physical-property fixes and the manifest refresh, each mutation-tested. One of them computes real CSS specificity — with the `:is()`/`:not()` rule that a functional pseudo-class counts as its most specific argument, not the sum — and checks that *every* selector in the group outranks the host's `(0,2,1)` `!important` rule. The first version of that test counted class names in the string, passed on a deliberately weakened selector, and was thrown out.
+
+### Note
+Under `baseDirection: "auto"` lists stay left-to-right, so these fixes apply only when the base is pinned.
+
 ## [2.1.0] - 2026-09-05
 
 ### Fixed
