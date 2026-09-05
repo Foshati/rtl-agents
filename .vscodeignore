@@ -1,4 +1,6 @@
+.vscode/
 .vscode-test/
+.test-out/
 node_modules/
 *.vsix
 src/
@@ -12,3 +14,4 @@ pnpm-lock.yaml
 .gitignore
 .github/
 *.tgz
+public/screenshot.png
