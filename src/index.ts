@@ -288,7 +288,7 @@ async function silentPatch(onlyWhenIncomplete: boolean): Promise<boolean> {
 
   for (const inst of installations) {
     if (onlyWhenIncomplete && (await isFullyInstalled(inst))) {
-      const refreshed = await reinjectAssets(inst, getContentOptions())
+      const refreshed = await reinjectAssets(inst, getPatchOptions())
       if (refreshed.changed) {
         anyChanged = true
       }
@@ -389,7 +389,7 @@ export function activate(context: vscode.ExtensionContext): void {
         return
       }
       const installations = await findIdeInstallations()
-      const options = getContentOptions()
+      const options = getPatchOptions()
       for (const inst of installations) {
         await reinjectAssets(inst, options)
       }

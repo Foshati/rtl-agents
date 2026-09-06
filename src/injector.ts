@@ -36,6 +36,27 @@ async function readManifest(installation: IdeInstallation): Promise<PatchManifes
 }
 
 /**
+ * Keep the recorded extension version in step with the assets on disk.
+ *
+ * An extension update rewrites the assets through `reinjectAssets` without
+ * touching workbench HTML, so the manifest — written only by `addRtl` — would
+ * otherwise keep reporting the version that first applied the patch.
+ */
+async function refreshManifestVersion(
+  installation: IdeInstallation,
+  extensionVersion: string,
+  messages: string[],
+): Promise<void> {
+  const manifest = await readManifest(installation)
+  if (!manifest || manifest.extensionVersion === extensionVersion) {
+    return
+  }
+  manifest.extensionVersion = extensionVersion
+  await fs.writeFile(manifestPath(installation), `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8')
+  messages.push(`  Manifest: Version updated to ${extensionVersion}`)
+}
+
+/**
  * Relative href from a target's HTML file to an asset in the shared asset dir.
  */
 function relativeAsset(target: WorkbenchTarget, fileName: string): string {
@@ -430,7 +451,7 @@ export async function removeRtl(installation: IdeInstallation): Promise<PatchRes
  */
 export async function reinjectAssets(
   installation: IdeInstallation,
-  options: ContentOptions,
+  options: PatchOptions,
 ): Promise<PatchResult> {
   const messages: string[] = []
 
@@ -440,6 +461,7 @@ export async function reinjectAssets(
 
   try {
     const changed = await writeAssets(installation, options, messages)
+    await refreshManifestVersion(installation, options.extensionVersion, messages)
     return { messages, changed, permissionError: false }
   }
   catch (e: unknown) {

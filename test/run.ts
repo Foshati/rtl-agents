@@ -23,7 +23,7 @@ import {
   MANIFEST_FILENAME,
   stripInjected,
 } from '../src/content'
-import { addRtl, getStatus, isFullyInstalled, removeRtl } from '../src/injector'
+import { addRtl, getStatus, isFullyInstalled, reinjectAssets, removeRtl } from '../src/injector'
 import { firstStrongDirection, PERSIAN_CORPUS } from './corpus'
 
 const FIXTURES = path.resolve(process.cwd(), 'test', 'fixtures')
@@ -97,6 +97,110 @@ const AUTO = { customSelectors: [], baseDirection: 'auto' as const }
 function messageTextRule(css: string): string {
   const start = css.indexOf('Message text')
   return css.slice(start, css.indexOf('Composer'))
+}
+
+type Specificity = [ids: number, classes: number, types: number]
+
+/**
+ * CSS specificity, including the `:is()` / `:not()` rule that a functional
+ * pseudo-class counts as its most specific argument — not the sum of them, and
+ * not the number of class names that happen to appear inside it.
+ */
+function specificity(selector: string): Specificity {
+  let ids = 0
+  let classes = 0
+  let types = 0
+  let i = 0
+
+  while (i < selector.length) {
+    const ch = selector[i]
+    const rest = selector.slice(i)
+    const fn = rest.match(/^:(is|not|where|has)\(/)
+    if (fn) {
+      // Find the matching close paren, honouring nesting.
+      let depth = 0
+      let j = i + fn[0].length - 1
+      for (; j < selector.length; j++) {
+        if (selector[j] === '(') {
+          depth++
+        }
+        else if (selector[j] === ')') {
+          depth--
+          if (depth === 0) {
+            break
+          }
+        }
+      }
+      const inner = selector.slice(i + fn[0].length, j)
+      if (fn[1] !== 'where') {
+        const best = splitTopLevel(inner).map(specificity).reduce((a, b) => (compareSpecificity(a, b) >= 0 ? a : b))
+        ids += best[0]
+        classes += best[1]
+        types += best[2]
+      }
+      i = j + 1
+      continue
+    }
+    if (ch === '#') {
+      ids++
+      i += 1 + (rest.slice(1).match(/^[\w-]+/)?.[0].length ?? 0)
+      continue
+    }
+    // `::before` style pseudo-elements count as types.
+    if (rest.startsWith('::')) {
+      types++
+      i += 2 + (rest.slice(2).match(/^[\w-]+/)?.[0].length ?? 0)
+      continue
+    }
+    if (ch === '.' || ch === '[' || ch === ':') {
+      if (ch === '[') {
+        i = selector.indexOf(']', i) + 1
+      }
+      else {
+        i += 1 + (rest.slice(1).match(/^[\w-]+/)?.[0].length ?? 0)
+      }
+      classes++
+      continue
+    }
+    const type = rest.match(/^[a-z][\w-]*/i)
+    if (type) {
+      types++
+      i += type[0].length
+      continue
+    }
+    i++ // combinators, whitespace, commas, `*`
+  }
+  return [ids, classes, types]
+}
+
+/** Split on top-level commas only. */
+function splitTopLevel(list: string): string[] {
+  const out: string[] = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < list.length; i++) {
+    if (list[i] === '(') {
+      depth++
+    }
+    else if (list[i] === ')') {
+      depth--
+    }
+    else if (list[i] === ',' && depth === 0) {
+      out.push(list.slice(start, i))
+      start = i + 1
+    }
+  }
+  out.push(list.slice(start))
+  return out.map(s => s.trim()).filter(Boolean)
+}
+
+function compareSpecificity(a: Specificity, b: Specificity): number {
+  for (let k = 0; k < 3; k++) {
+    if (a[k] !== b[k]) {
+      return a[k] - b[k]
+    }
+  }
+  return 0
 }
 
 async function main(): Promise<void> {
@@ -314,6 +418,101 @@ async function main(): Promise<void> {
     assert.notEqual(buildCss(RTL), buildCss(AUTO))
     assert.match(buildCss(RTL), /base direction: rtl/)
     assert.match(buildCss(AUTO), /base direction: auto/)
+  })
+
+  group('physical properties set by the host')
+
+  /** The section that translates the host's physical indent/border into logical ones. */
+  function physicalSection(css: string): string {
+    const marker = css.indexOf('Physical properties set by the host')
+    if (marker === -1) {
+      return ''
+    }
+    // The marker sits inside a comment: back up to its opener, then strip every
+    // comment so selector extraction never reads prose as CSS.
+    const start = css.lastIndexOf('/*', marker)
+    return css.slice(start).replace(/\/\*[\s\S]*?\*\//g, '')
+  }
+
+  await test('list indent moves to the logical start side', () => {
+    const section = physicalSection(buildCss(RTL))
+    assert.ok(section, 'physical-property section missing in rtl mode')
+    // Antigravity indents with `[&_ol]:pl-10` / `[&>ol]:!pl-4` — physical, so it
+    // stays on the left under an RTL base and the marker has nowhere to sit.
+    assert.match(section, /:is\(ul, ol\)\s*\{\s*padding-left: 0 !important/)
+    assert.match(section, /padding-inline-start: 2\.5rem !important/)
+  })
+
+  await test('task lists keep their zero indent', () => {
+    const section = physicalSection(buildCss(RTL))
+    assert.match(section, /:is\(ul, ol\):not\(\.contains-task-list\)[^{]*\{\s*padding-inline-start/)
+  })
+
+  await test('the quote bar moves to the logical start side', () => {
+    const section = physicalSection(buildCss(RTL))
+    // Antigravity draws it with an inline `borderLeft`; !important in a stylesheet still wins.
+    assert.match(section, /blockquote[^{]*\{\s*border-left: none !important;\s*border-inline-start: 4px solid/)
+  })
+
+  await test('the specificity calculator agrees with known values', () => {
+    assert.deepEqual(specificity('html.rtl-agents-on :is(.a, .b) :is(ul, ol)'), [0, 2, 2])
+    assert.deepEqual(specificity('html :is(.a, .b) :is(ul, ol)'), [0, 1, 2])
+    assert.deepEqual(specificity('.u > ol:not(.t)'), [0, 2, 1])
+    assert.deepEqual(specificity(':where(.a, #b) p'), [0, 0, 1])
+    assert.deepEqual(specificity('#x .y::before'), [1, 1, 1])
+    // html + body + ul are three type selectors.
+    assert.deepEqual(specificity('html.rtl-agents-on.rtl-agents-standalone body :is(ul, ol)'), [0, 2, 3])
+  })
+
+  await test('every physical-fix selector outranks the host rule it overrides', () => {
+    // Antigravity's `[&>ol:not(.contains-task-list)]:!pl-4` compiles to
+    // `.<utility> > ol:not(.contains-task-list)`: specificity (0,2,1), !important.
+    // Both sides are !important, so specificity decides — and a selector list is
+    // only as strong as its weakest member, so each one must win on its own.
+    const section = physicalSection(buildCss(RTL))
+    const group = section.match(/([^{}]+)\{\s*padding-left: 0 !important/)?.[1] ?? ''
+    const selectors = splitTopLevel(group)
+    assert.ok(selectors.length >= 2, `expected panel + standalone selectors, got: ${group.trim()}`)
+    const host: Specificity = [0, 2, 1]
+    for (const sel of selectors) {
+      const ours = specificity(sel)
+      assert.ok(
+        compareSpecificity(ours, host) > 0,
+        `(${ours}) does not beat the host's (${host}) for "${sel.trim()}"`,
+      )
+    }
+  })
+
+  await test('physical fixes are absent in auto mode, where lists stay LTR', () => {
+    const css = buildCss(AUTO)
+    assert.equal(physicalSection(css), '')
+    assert.doesNotMatch(css, /padding-inline-start/)
+    assert.doesNotMatch(css, /border-inline-start/)
+  })
+
+  await test('the physical section applies to the standalone agent window too', () => {
+    const section = physicalSection(buildCss(RTL))
+    assert.match(section, /html\.rtl-agents-on\.rtl-agents-standalone body :is\(ul, ol\)/)
+    assert.match(section, /html\.rtl-agents-on\.rtl-agents-standalone body blockquote/)
+  })
+
+  group('manifest')
+
+  await test('reinjecting assets after an extension update refreshes the recorded version', async () => {
+    const fresh = await makeInstallation({ 'workbench.html': base })
+    await addRtl(fresh, { ...OPTIONS, extensionVersion: '2.1.0' })
+    const manifestPath = path.join(fresh.workbenchDir, MANIFEST_FILENAME)
+    assert.equal(JSON.parse(await fs.readFile(manifestPath, 'utf-8')).extensionVersion, '2.1.0')
+
+    // The update path never touches workbench HTML, only the assets.
+    const result = await reinjectAssets(fresh, { ...OPTIONS, extensionVersion: '2.1.1' })
+    assert.equal(JSON.parse(await fs.readFile(manifestPath, 'utf-8')).extensionVersion, '2.1.1')
+    assert.ok(result.messages.some(m => m.includes('Manifest')), result.messages.join(' | '))
+
+    // Same version again: nothing to report.
+    const again = await reinjectAssets(fresh, { ...OPTIONS, extensionVersion: '2.1.1' })
+    assert.ok(!again.messages.some(m => m.includes('Manifest')), again.messages.join(' | '))
+    await fs.rm(fresh.appRoot, { recursive: true, force: true })
   })
 
   console.log(`\n${passed} passed, ${failed} failed\n`)
