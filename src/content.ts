@@ -22,14 +22,38 @@ export const TOGGLE_GLYPH = '⇄'
 export const STORAGE_KEY = 'rtl-agents-active-state'
 
 /**
- * Chat surfaces we scope the BiDi rules to.
- * Keeping this list narrow is what stops the patch from re-aligning the editor itself.
+ * Chat panels, used only as a scope prefix — never flipped wholesale.
+ *
+ * Flipping a panel would re-align its toolbars and buttons too, which is the
+ * mistake v1 made. Direction is applied to the text inside, not to these.
  */
-const ROOT_SELECTORS = [
+const PANEL_ROOT_SELECTORS = [
   '.antigravity-agent-side-panel',
   '.rtl-agents-root',
   '.interactive-session',
   '.chat-container',
+]
+
+/**
+ * The rendered-markdown root of a single message — safe to flip as a whole,
+ * because everything inside it is message content rather than chrome.
+ *
+ * Enumerating the elements inside a message is what keeps breaking. Antigravity
+ * 2.5.5 wrapped each streamed paragraph in `div.animate-markdown`; 2.6.0 dropped
+ * the wrapper entirely and emits bare `<span>`s, so a list of block selectors
+ * matched nothing and the panel class we scoped to (`.antigravity-agent-side-panel`)
+ * was gone as well. `direction` inherits, so flipping the markdown root covers
+ * whatever the renderer emits next.
+ *
+ * `md-divider-spacing` is the stable hook: a semantic class rather than a utility,
+ * carried by the markdown wrapper in both the workbench and the standalone agent
+ * bundle, and unchanged across the 2.5.5 -> 2.6.0 rewrite that removed the other two.
+ */
+const MESSAGE_ROOT_SELECTORS = [
+  '.md-divider-spacing',
+  '.markdown-body',
+  '.rendered-markdown',
+  '.markdown',
 ]
 
 /**
@@ -55,12 +79,7 @@ const BLOCK_TEXT_SELECTORS = [
   'th',
   'figcaption',
   'summary',
-  // Antigravity renders each response paragraph as div.animate-markdown
-  '.animate-markdown',
   '.whitespace-pre-wrap',
-  '.markdown',
-  '.markdown-body',
-  '.rendered-markdown',
 ]
 
 /**
@@ -83,6 +102,7 @@ const LIST_SELECTORS = [
 const INPUT_SELECTORS = [
   'textarea',
   '[contenteditable="true"]',
+  '.agent-input-box textarea',
 ]
 
 /**
@@ -132,7 +152,8 @@ function list(selectors: string[]): string {
  * word order untouched — which is simply how LTR passages sit in an RTL document.
  */
 export function buildCss(options: ContentOptions): string {
-  const roots = list([...ROOT_SELECTORS, ...options.customSelectors])
+  const roots = list([...PANEL_ROOT_SELECTORS, ...options.customSelectors])
+  const messageRoots = list(MESSAGE_ROOT_SELECTORS)
   const inputs = list(INPUT_SELECTORS)
   const ltr = list(LTR_SELECTORS)
   const ltrBlocks = list(LTR_BLOCK_SELECTORS)
@@ -182,6 +203,16 @@ export function buildCss(options: ContentOptions): string {
    never on the panel root, so the chrome is untouched.
    ========================================== */
 
+/* The markdown root of a message. The direction property inherits, so this covers
+   whatever the renderer emits inside — 2.6.0 dropped its paragraph wrapper and
+   now emits bare spans, which no list of block selectors would have matched.
+   No panel prefix: the markdown root identifies itself, in both windows. */
+html.rtl-agents-on :is(${messageRoots}) {
+${textRule}
+}
+
+/* Panel-scoped text blocks, for editors whose chat is not wrapped in a markdown
+   root of its own, and for older Antigravity builds. */
 html.rtl-agents-on :is(${roots}) :is(${textSelectors}) {
 ${textRule}
 }
@@ -242,6 +273,7 @@ ${physical}
 function buildPhysicalPropertyFixes(roots: string): string {
   const scopes = [
     `html.rtl-agents-on :is(${roots})`,
+    `html.rtl-agents-on :is(${list(MESSAGE_ROOT_SELECTORS)})`,
     `html.rtl-agents-on.rtl-agents-standalone body`,
   ]
   const lists = scopes.map(s => `${s} :is(ul, ol)`).join(',\n')
