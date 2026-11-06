@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-10-30
+
+### Fixed
+- **Antigravity 2.6.0 broke RTL completely.** Both hooks the stylesheet depended on were removed by the host: `.antigravity-agent-side-panel`, which scoped every rule, and `.animate-markdown`, the wrapper around each streamed response paragraph. Neither string appears anywhere in the 2.6.0 bundles, so nothing matched and the patch had no effect even though it was still applied on disk.
+
+### Changed
+- **A message is now flipped at its markdown root, not element by element.** `direction` inherits, so flipping the root covers whatever the renderer emits inside it. Enumerating block elements is what kept breaking: 2.5.5 wrapped each streamed paragraph in a `div`, 2.6.0 dropped the wrapper and emits bare `<span>`s, which no list of block selectors would ever have matched.
+- The root is identified by `md-divider-spacing` — a semantic class rather than a utility, carried by the markdown wrapper in both the workbench and the standalone agent bundle, and unchanged across the 2.5.5 → 2.6.0 rewrite that removed the other two hooks. The rule carries no panel prefix, so renaming a panel cannot break it again.
+- Panel-scoped rules are kept for editors whose chat is not wrapped in a markdown root of its own, and for older Antigravity builds. Panels are still only ever used as a scope prefix, never flipped wholesale.
+- The composer now also matches Antigravity's `.agent-input-box textarea`.
+
+### Testing
+- Five tests for host-version drift, each mutation-tested: removing the stable hook, re-adding a panel prefix to the message-root rule, dropping the markdown root from the physical-property fixes, reordering the LTR guard ahead of the message rule, and dropping the composer selector each fail the test meant to catch them. 34 passed, 0 failed.
+- The obsolete assertion requiring `.animate-markdown` was replaced rather than deleted: it now pins the hook that actually survives host upgrades.
+
 ## [2.1.1] - 2026-09-05
 
 ### Fixed

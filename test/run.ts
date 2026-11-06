@@ -322,8 +322,8 @@ async function main(): Promise<void> {
     const css = buildCss(RTL)
     assert.match(messageTextRule(css), /direction: rtl !important/)
     assert.match(css, /html\.rtl-agents-on/)
-    // The container Antigravity 2.5.5 renders each response paragraph into.
-    assert.match(css, /\.animate-markdown/)
+    // The markdown wrapper's stable hook, carried in both Antigravity bundles.
+    assert.match(css, /\.md-divider-spacing/)
     assert.match(css, /rtl-agents-standalone/)
   })
 
@@ -348,6 +348,63 @@ async function main(): Promise<void> {
     assert.doesNotMatch(js, /command:rtl-agents/, 'command: hrefs do not work in the workbench')
     assert.doesNotMatch(js, /observe\(\s*(?:DOC|document)\.body/, 'no document-wide observer')
     assert.match(js, /selfDestruct/, 'must clean up when the extension goes away')
+  })
+
+  group('host version drift')
+
+  /** The rule that flips a whole rendered message, independent of any panel class. */
+  function messageRootRule(css: string): string {
+    const marker = css.indexOf('The markdown root of a message')
+    if (marker === -1) {
+      return ''
+    }
+    const start = css.indexOf('*/', marker) + 2
+    return css.slice(start, css.indexOf('}', start) + 1)
+  }
+
+  await test('a whole message is flipped at its markdown root', () => {
+    // Enumerating elements inside a message is what keeps breaking: 2.5.5 wrapped
+    // each streamed paragraph in div.animate-markdown, 2.6.0 emits bare spans.
+    // `direction` inherits, so the root is flipped instead.
+    const rule = messageRootRule(buildCss(RTL))
+    assert.ok(rule, 'message-root rule missing')
+    assert.match(rule, /\.md-divider-spacing/)
+    assert.match(rule, /direction: rtl !important/)
+  })
+
+  await test('the message root needs no panel class to match', () => {
+    // Antigravity 2.6.0 removed .antigravity-agent-side-panel outright. A rule that
+    // depends on a panel class stops matching the moment the host renames one.
+    const rule = messageRootRule(buildCss(RTL))
+    const selector = rule.split('{')[0]
+    for (const panel of ['antigravity-agent-side-panel', 'interactive-session', 'chat-container']) {
+      assert.doesNotMatch(selector, new RegExp(panel), `message root must not require .${panel}`)
+    }
+  })
+
+  await test('physical fixes reach the markdown root as well as the panel', () => {
+    const section = physicalSection(buildCss(RTL))
+    const group = section.match(/([^{}]+)\{\s*padding-left: 0 !important/)?.[1] ?? ''
+    assert.match(group, /\.md-divider-spacing/, 'list indent fix misses the markdown root')
+    assert.match(group, /rtl-agents-standalone/)
+  })
+
+  await test('the composer covers the agent input box', () => {
+    const css = buildCss(RTL)
+    const composer = css.slice(css.indexOf('Composer'), css.indexOf('Layout safety'))
+    assert.match(composer, /agent-input-box/)
+  })
+
+  await test('code and tables still override the inherited direction', () => {
+    const css = buildCss(RTL)
+    // Both rules are !important at equal specificity, so the guard must come last.
+    assert.ok(
+      css.indexOf('Layout safety') > css.indexOf('The markdown root of a message'),
+      'the LTR guard must follow the message-root rule to win the cascade',
+    )
+    const guard = css.slice(css.indexOf('Layout safety'))
+    assert.match(guard, /direction: ltr !important/)
+    assert.match(guard, /html\.rtl-agents-on table \{\s*direction: ltr/)
   })
 
   group('base direction')
