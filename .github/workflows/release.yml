@@ -97,7 +97,7 @@ jobs:
           OUTPUT=$(npx ovsx publish "${{ steps.version.outputs.vsix }}" -p "$OPEN_VSX_TOKEN" 2>&1) || {
             STATUS=$?
             echo "$OUTPUT"
-            if echo "$OUTPUT" | grep -qi "already published"; then
+            if echo "$OUTPUT" | grep -qiE "already published|already exists"; then
               echo "::notice::Version is already published on Open VSX"
             else
               exit $STATUS
@@ -112,7 +112,7 @@ jobs:
           OUTPUT=$(npx @vscode/vsce publish --packagePath "${{ steps.version.outputs.vsix }}" --pat "$VSCE_PAT" 2>&1) || {
             STATUS=$?
             echo "$OUTPUT"
-            if echo "$OUTPUT" | grep -qi "already published"; then
+            if echo "$OUTPUT" | grep -qiE "already published|already exists"; then
               echo "::notice::Version is already published on VS Code Marketplace"
             else
               exit $STATUS
