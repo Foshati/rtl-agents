@@ -2,7 +2,7 @@
   "publisher": "foshati",
   "name": "rtl-agents",
   "displayName": "RTL Agents",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "packageManager": "pnpm@10.22.0",
   "description": "Professional RTL/LTR toggle support for AI Chats (Cursor, VS Code, Windsurf, VSCodium, Antigravity) with code block alignment safety.",
   "author": "Foshati",
@@ -65,15 +65,17 @@
         "rtl-agents.baseDirection": {
           "type": "string",
           "enum": [
+            "smart",
             "rtl",
             "auto"
           ],
           "enumDescriptions": [
-            "Pin chat text to a right-to-left base. Correct for Persian, Arabic and Hebrew conversations, including sentences that open with an English term.",
-            "Let each paragraph pick its direction from its first strong character. Only preferable when the chat is mostly left-to-right with occasional RTL passages."
+            "Decide per message: a Persian, Arabic or Hebrew reply is right-to-left, an English one left-to-right. Tables are judged on their own. Code always stays left-to-right.",
+            "Pin every chat message to a right-to-left base, whatever language it is in.",
+            "Let each paragraph pick its direction from its first strong character (the pre-2.1 behaviour). A Persian sentence that opens with an English term flips to left-to-right."
           ],
-          "default": "rtl",
-          "markdownDescription": "Base direction for rendered chat text.\n\n`rtl` pins every message block to a right-to-left base. `auto` restores the pre-2.1 per-paragraph detection, which mis-aligns Persian sentences that begin with a Latin term such as `API` or `npm install`."
+          "default": "smart",
+          "markdownDescription": "How chat text picks its direction.\n\n`smart` (default) decides per message from the share of right-to-left letters in it, ignoring code, so mixed conversations render each reply in its own direction. `rtl` pins everything right-to-left. `auto` is the legacy per-paragraph first-strong-character detection."
         },
         "rtl-agents.customSelectors": {
           "type": "array",

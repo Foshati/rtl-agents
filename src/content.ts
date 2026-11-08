@@ -1,4 +1,5 @@
 import type { ContentOptions } from './types'
+import { decideDirection, isSettled, rangesToClass, STRONG_LTR_RANGES, STRONG_RTL_RANGES } from './bidi'
 
 /** Opening sentinel of the injected block in workbench HTML */
 export const PATCH_BEGIN = '<!-- RTL-AGENTS-BEGIN -->'
@@ -25,7 +26,7 @@ export const STORAGE_KEY = 'rtl-agents-active-state'
  * Chat panels, used only as a scope prefix — never flipped wholesale.
  *
  * Flipping a panel would re-align its toolbars and buttons too, which is the
- * mistake v1 made. Direction is applied to the text inside, not to these.
+ * mistake v1 made. Direction is applied to message text inside, not to these.
  */
 const PANEL_ROOT_SELECTORS = [
   '.antigravity-agent-side-panel',
@@ -35,34 +36,36 @@ const PANEL_ROOT_SELECTORS = [
 ]
 
 /**
- * The rendered-markdown root of a single message — safe to flip as a whole,
- * because everything inside it is message content rather than chrome.
+ * Message roots that identify themselves, matched without a panel prefix.
  *
- * Enumerating the elements inside a message is what keeps breaking. Antigravity
- * 2.5.5 wrapped each streamed paragraph in `div.animate-markdown`; 2.6.0 dropped
- * the wrapper entirely and emits bare `<span>`s, so a list of block selectors
- * matched nothing and the panel class we scoped to (`.antigravity-agent-side-panel`)
- * was gone as well. `direction` inherits, so flipping the markdown root covers
- * whatever the renderer emits next.
+ * `md-divider-spacing` is Antigravity's markdown wrapper: a semantic class rather
+ * than a utility, carried in both the workbench and the standalone agent bundle,
+ * and unchanged from 2.5.5 to 2.6.0 while the panel class and the paragraph
+ * wrapper we used to rely on were both removed.
  *
- * `md-divider-spacing` is the stable hook: a semantic class rather than a utility,
- * carried by the markdown wrapper in both the workbench and the standalone agent
- * bundle, and unchanged across the 2.5.5 -> 2.6.0 rewrite that removed the other two.
+ * The user's own message is found through its test id — test ids are what the
+ * host's end-to-end tests select by, so they outlive styling. Only the text inside
+ * the bubble is a root: the bubble itself is a flex row of icons whose layout
+ * must not flip.
  */
-const MESSAGE_ROOT_SELECTORS = [
+const SELF_IDENTIFYING_ROOTS = [
   '.md-divider-spacing',
-  '.markdown-body',
-  '.rendered-markdown',
-  '.markdown',
+  '[data-testid="user-message-bubble"] > .flex-1',
+  '[data-testid="user-message-bubble"] .whitespace-pre-wrap',
 ]
 
 /**
- * Block-level text containers inside a chat surface.
- *
- * These carry the base direction. Setting `direction` here rather than on the
- * panel root is what keeps the surrounding chrome — buttons, icons, flex
- * layout — untouched; v1 flipped the container and wrecked the UI.
+ * Generic markdown classes. The editor renders hovers, the settings editor and
+ * extension pages with the same classes, so they only count as chat messages
+ * inside a chat panel. 2.2.0 matched them everywhere, which flipped those too.
  */
+const PANEL_MARKDOWN_CLASSES = [
+  '.rendered-markdown',
+  '.markdown-body',
+  '.markdown',
+]
+
+/** Block-level text, for `auto` mode and for panels without a markdown root. */
 const BLOCK_TEXT_SELECTORS = [
   'p',
   'li',
@@ -82,33 +85,30 @@ const BLOCK_TEXT_SELECTORS = [
   '.whitespace-pre-wrap',
 ]
 
-/**
- * List containers need the base direction too, not just their items.
- *
- * The `::marker` box is placed according to the list item's `direction`, and the
- * UA's `padding-inline-start` resolves against the list's. Leaving these LTR
- * strands the bullets and the indent on the left of right-aligned text.
- */
 const LIST_SELECTORS = [
   'ul',
   'ol',
 ]
 
 /**
- * Editable fields, where per-paragraph resolution genuinely is the right call:
- * the composer should flip live as you type, before there is any context to
- * pin it to.
+ * The composer, where per-paragraph resolution is the right call: it should flip
+ * live as you type. Antigravity's editor is Lexical, which renders paragraphs
+ * inside the editable — and `unicode-bidi` does not inherit, so they are listed.
  */
-const INPUT_SELECTORS = [
+const COMPOSER_SELECTORS = [
+  '[data-testid="agent-input-box"] [contenteditable="true"]',
+  '[data-testid="agent-input-box"] [contenteditable="true"] :is(p, div)',
+  '[data-testid="agent-input-box"] textarea',
+]
+
+const PANEL_INPUT_SELECTORS = [
   'textarea',
   '[contenteditable="true"]',
-  '.agent-input-box textarea',
 ]
 
 /**
- * Runs that must keep LTR order regardless of the text around them.
- * `isolate` keeps them from disturbing the bidi resolution of the sentence
- * they sit in, and vice versa.
+ * Runs that keep LTR order regardless of the text around them. `isolate` keeps
+ * them from disturbing the bidi resolution of the sentence they sit in.
  */
 const LTR_SELECTORS = [
   'pre',
@@ -118,15 +118,11 @@ const LTR_SELECTORS = [
   '.monaco-editor',
   '.interactive-result-code-block',
   '.code-block-container',
+  '.katex',
+  '.mermaid',
 ]
 
-/**
- * The block-level subset of the above.
- *
- * `text-align` is meaningless on an inline `<code>` but not harmless: it would
- * apply to the block that a bare `code` selector matches through inheritance
- * quirks, so alignment is pinned only where a block box actually exists.
- */
+/** The block-level subset: alignment is only pinned where a block box exists. */
 const LTR_BLOCK_SELECTORS = [
   'pre',
   '.monaco-editor',
@@ -134,44 +130,140 @@ const LTR_BLOCK_SELECTORS = [
   '.code-block-container',
 ]
 
+/** Left out of the letter count: code reads the same whatever prose surrounds it. */
+const NON_PROSE_SELECTORS = [
+  'pre',
+  'code',
+  'kbd',
+  'samp',
+  '.katex',
+  '.mermaid',
+  '.monaco-editor',
+]
+
+/** Attribute the runtime stamps on each message root and table in `smart` mode. */
+export const DIR_ATTR = 'data-rtl-agents-dir'
+
 function list(selectors: string[]): string {
   return selectors.join(', ')
 }
 
+function panelSelectors(options: ContentOptions): string[] {
+  return [...PANEL_ROOT_SELECTORS, ...options.customSelectors]
+}
+
+/** Every selector that identifies a whole chat message. */
+export function messageRootSelectors(options: ContentOptions): string[] {
+  const panelMarkdown = panelSelectors(options)
+    .flatMap(panel => PANEL_MARKDOWN_CLASSES.map(cls => `${panel} ${cls}`))
+  return [...SELF_IDENTIFYING_ROOTS, ...panelMarkdown]
+}
+
 /**
- * Build the RTL stylesheet. Everything is scoped behind `html.rtl-agents-on`
- * so toggling is a single class flip on the root element.
- *
- * The base direction is pinned, not detected. `unicode-bidi: plaintext` resolves
- * each paragraph from its first strong directional character (Unicode BiDi P2/P3),
- * which breaks on ordinary Persian technical prose: a sentence opening with `API`,
- * `OTP`, `npm install` or a library name resolves the whole paragraph to LTR, so it
- * left-aligns and its trailing Persian punctuation lands on the wrong side. On a
- * representative corpus that misfires on roughly 40% of lines. A pinned RTL base
- * costs one thing by comparison — an all-LTR paragraph is right-aligned, with its
- * word order untouched — which is simply how LTR passages sit in an RTL document.
+ * Hosts set alignment and spacing with physical properties that ignore
+ * `direction`: Antigravity compiles `[&_ol]:pl-10` and `[&>ol]:!pl-4` to
+ * `padding-left`, draws the quote bar with an inline `borderLeft`, and gives
+ * table headers `text-left`. Inside an RTL message each is replaced with its
+ * logical counterpart, mirroring the host's own values.
+ */
+function rtlPolish(scope: string): string {
+  return `${scope} :is(th, td, .text-left) {
+  text-align: start !important;
+}
+
+${scope} :is(ul, ol) {
+  padding-left: 0 !important;
+  padding-inline-start: 2.5rem !important;
+}
+
+${scope} > :is(ul, ol):not(.contains-task-list) {
+  padding-inline-start: 1.25rem !important;
+}
+
+${scope} > :is(ul, ol).contains-task-list {
+  padding-inline-start: 0 !important;
+}
+
+${scope} blockquote {
+  border-left: none !important;
+  border-inline-start: 4px solid var(--border, var(--vscode-textBlockQuote-border, currentColor)) !important;
+}`
+}
+
+function smartDirectionCss(): string {
+  const rtl = `html.rtl-agents-on [${DIR_ATTR}="rtl"]`
+  return `/* Each message, and each table, carries the direction the runtime decided
+   for it. The runtime runs inside the mutation that renders the text, so the
+   attribute is in place before the frame is painted. */
+${rtl} {
+  direction: rtl !important;
+  text-align: start !important;
+}
+
+html.rtl-agents-on [${DIR_ATTR}="ltr"] {
+  direction: ltr !important;
+}
+
+${rtlPolish(rtl)}`
+}
+
+function pinnedDirectionCss(roots: string, panels: string, blocks: string): string {
+  const scope = `html.rtl-agents-on :is(${roots})`
+  return `/* Every message is pinned to an RTL base. The direction property inherits,
+   so whatever the renderer emits inside the markdown root follows it. */
+${scope} {
+  direction: rtl !important;
+  text-align: start !important;
+}
+
+/* Panels whose chat is not wrapped in a markdown root of its own. */
+html.rtl-agents-on :is(${panels}) :is(${blocks}) {
+  direction: rtl !important;
+  text-align: start !important;
+}
+
+${rtlPolish(scope)}`
+}
+
+function autoDirectionCss(roots: string, panels: string, blocks: string): string {
+  return `/* Legacy: each paragraph resolves its own direction from its first strong
+   character. Lists keep the host's layout. */
+html.rtl-agents-on :is(${roots}) :is(${blocks}),
+html.rtl-agents-on :is(${panels}) :is(${blocks}) {
+  unicode-bidi: plaintext !important;
+  text-align: start !important;
+}`
+}
+
+/**
+ * Build the RTL stylesheet. Everything is gated behind `html.rtl-agents-on`, so
+ * toggling is a single class flip on the root element.
  */
 export function buildCss(options: ContentOptions): string {
-  const roots = list([...PANEL_ROOT_SELECTORS, ...options.customSelectors])
-  const messageRoots = list(MESSAGE_ROOT_SELECTORS)
-  const inputs = list(INPUT_SELECTORS)
-  const ltr = list(LTR_SELECTORS)
-  const ltrBlocks = list(LTR_BLOCK_SELECTORS)
+  const version = options.extensionVersion ?? 'dev'
+  const panels = list(panelSelectors(options))
+  const roots = list(messageRootSelectors(options))
+  const blocks = list([...BLOCK_TEXT_SELECTORS, ...LIST_SELECTORS])
+  const composer = list([
+    ...COMPOSER_SELECTORS,
+    ...PANEL_INPUT_SELECTORS.map(input => `:is(${panels}) ${input}`),
+  ])
 
-  // Lists carry the base direction so their markers and indent follow the text.
-  const pinned = list([...BLOCK_TEXT_SELECTORS, ...LIST_SELECTORS])
-  const auto = list(BLOCK_TEXT_SELECTORS)
-
-  const textRule = options.baseDirection === 'auto'
-    ? `  unicode-bidi: plaintext !important;\n  text-align: start !important;`
-    : `  direction: rtl !important;\n  text-align: right !important;`
-
-  const textSelectors = options.baseDirection === 'auto' ? auto : pinned
-  const physical = options.baseDirection === 'auto' ? '' : buildPhysicalPropertyFixes(roots)
+  const direction = options.baseDirection === 'smart'
+    ? smartDirectionCss()
+    : options.baseDirection === 'rtl'
+      ? pinnedDirectionCss(roots, panels, blocks)
+      : autoDirectionCss(roots, panels, list(BLOCK_TEXT_SELECTORS))
 
   return `/* === RTL-AGENTS-CSS-START === */
 /* Generated by RTL Agents — do not edit by hand. */
 /* base direction: ${options.baseDirection} */
+
+/* Lets a running window report which stylesheet it actually loaded. */
+:root {
+  --rtl-agents-version: "${version}";
+  --rtl-agents-mode: "${options.baseDirection}";
+}
 
 /* ==========================================
    Header toggle button
@@ -199,37 +291,17 @@ export function buildCss(options: ContentOptions): string {
 }
 
 /* ==========================================
-   Message text — the base direction lives here,
-   never on the panel root, so the chrome is untouched.
+   Message direction
    ========================================== */
 
-/* The markdown root of a message. The direction property inherits, so this covers
-   whatever the renderer emits inside — 2.6.0 dropped its paragraph wrapper and
-   now emits bare spans, which no list of block selectors would have matched.
-   No panel prefix: the markdown root identifies itself, in both windows. */
-html.rtl-agents-on :is(${messageRoots}) {
-${textRule}
-}
-
-/* Panel-scoped text blocks, for editors whose chat is not wrapped in a markdown
-   root of its own, and for older Antigravity builds. */
-html.rtl-agents-on :is(${roots}) :is(${textSelectors}) {
-${textRule}
-}
-
-/* Standalone agent window (workbench-jetski-agent.html) has no panel root:
-   the whole document is the chat surface. */
-html.rtl-agents-on.rtl-agents-standalone body :is(${textSelectors}) {
-${textRule}
-}
+${direction}
 
 /* ==========================================
    Composer — resolves per paragraph on purpose,
    so it flips live while you type.
    ========================================== */
 
-html.rtl-agents-on :is(${roots}) :is(${inputs}),
-html.rtl-agents-on.rtl-agents-standalone body :is(${inputs}) {
+html.rtl-agents-on :is(${composer}) {
   unicode-bidi: plaintext !important;
   text-align: start !important;
 }
@@ -240,79 +312,34 @@ html.rtl-agents-on.rtl-agents-standalone body :is(${inputs}) {
 
 /* Isolation keeps an inline code span from disturbing the bidi resolution of
    the sentence around it, and the sentence from reordering the span. */
-html.rtl-agents-on :is(${ltr}) {
+html.rtl-agents-on :is(${list(LTR_SELECTORS)}) {
   direction: ltr !important;
   unicode-bidi: isolate !important;
 }
 
 /* Alignment is pinned only where a block box exists — forcing it on an inline
    <code> would fight the alignment of the paragraph holding it. */
-html.rtl-agents-on :is(${ltrBlocks}) {
+html.rtl-agents-on :is(${list(LTR_BLOCK_SELECTORS)}) {
   text-align: left !important;
 }
 
-/* Column order always follows source order, never the surrounding text. */
-html.rtl-agents-on table {
-  direction: ltr !important;
-}
-${physical}
 /* === RTL-AGENTS-CSS-END === */
-`
-}
-
-/**
- * Host apps indent and decorate markdown with *physical* properties —
- * `padding-left`, `border-left` — which do not follow `direction`. Pinning an
- * RTL base then leaves the indent on the wrong side, and the list marker, now
- * on the right, has no room to sit in. Antigravity does exactly this:
- * `[&_ol]:pl-10`, `[&>ol]:!pl-4`, and an inline `borderLeft` on blockquote.
- *
- * Each physical property is zeroed and replaced with its logical counterpart.
- * Only meaningful when the base is pinned; under `auto` the lists stay LTR.
- */
-function buildPhysicalPropertyFixes(roots: string): string {
-  const scopes = [
-    `html.rtl-agents-on :is(${roots})`,
-    `html.rtl-agents-on :is(${list(MESSAGE_ROOT_SELECTORS)})`,
-    `html.rtl-agents-on.rtl-agents-standalone body`,
-  ]
-  const lists = scopes.map(s => `${s} :is(ul, ol)`).join(',\n')
-  const indented = scopes.map(s => `${s} :is(ul, ol):not(.contains-task-list)`).join(',\n')
-  const quotes = scopes.map(s => `${s} blockquote`).join(',\n')
-
-  return `
-/* ==========================================
-   Physical properties set by the host app
-
-   \`direction\` moves the marker, not the indent: \`padding-left\` stays put.
-   Zero it and restore the indent on the logical start side. Task lists keep
-   their zero indent — they have no marker to make room for.
-   ========================================== */
-
-${lists} {
-  padding-left: 0 !important;
-}
-
-${indented} {
-  padding-inline-start: 2.5rem !important;
-}
-
-/* The quote bar is an inline \`borderLeft\`; a stylesheet !important still wins. */
-${quotes} {
-  border-left: none !important;
-  border-inline-start: 4px solid var(--vscode-textBlockQuote-border, currentColor) !important;
-}
 `
 }
 
 /**
  * Build the injected runtime.
  *
- * Responsibilities are deliberately small: set the root class before first paint,
- * inject the header toggle button, and keep in sync with the extension host through
- * the status bar item. Text direction itself is handled entirely by CSS.
+ * It sets the root class before first paint, injects the header toggle button,
+ * keeps in sync with the extension host through the status bar item, and — in
+ * `smart` mode — decides each message's direction. That decision runs inside a
+ * MutationObserver callback, which the browser delivers as a microtask before the
+ * frame is painted, so a message never renders in one direction and then jumps.
+ *
+ * `window.__rtlAgents.diagnose()` reports what a live window actually loaded.
  */
-export function buildJs(_options: ContentOptions): string {
+export function buildJs(options: ContentOptions): string {
+  const version = options.extensionVersion ?? 'dev'
   return `/* === RTL-AGENTS-JS-START === */
 /* Generated by RTL Agents — do not edit by hand. */
 (function () {
@@ -321,18 +348,26 @@ export function buildJs(_options: ContentOptions): string {
   try {
     var DOC = document;
     var HTML = DOC.documentElement;
+    var VERSION = ${JSON.stringify(version)};
+    var MODE = ${JSON.stringify(options.baseDirection)};
     var BTN_ID = 'rtl-agents-toggle-btn';
     var ON_CLASS = 'rtl-agents-on';
     var STANDALONE_CLASS = 'rtl-agents-standalone';
     var ACTIVE_CLASS = 'rtl-agents-active';
-    var STORAGE_KEY = '${STORAGE_KEY}';
+    var STORAGE_KEY = ${JSON.stringify(STORAGE_KEY)};
+    var DIR_ATTR = ${JSON.stringify(DIR_ATTR)};
+    var ROOT_SELECTOR = ${JSON.stringify(list(messageRootSelectors(options)))};
+    var NON_PROSE_SELECTOR = ${JSON.stringify(list(NON_PROSE_SELECTORS))};
+    var RTL_LETTER = new RegExp(${JSON.stringify(rangesToClass(STRONG_RTL_RANGES))}, 'g');
+    var LTR_LETTER = new RegExp(${JSON.stringify(rangesToClass(STRONG_LTR_RANGES))}, 'g');
+    var decideDirection = (${decideDirection.toString()});
+    var isSettled = (${isSettled.toString()});
     var GLYPH = '\\u21C4';
     var POLL_MS = 800;
     var SELF_DESTRUCT_MS = 3000;
 
     /* ------------------------------------------------------------------
        Phase 0 — runs from <head>, before <body> exists.
-       Setting the class here is what removes the initial LTR flash.
        ------------------------------------------------------------------ */
 
     var file = (location.pathname.split('/').pop() || '').toLowerCase();
@@ -341,13 +376,140 @@ export function buildJs(_options: ContentOptions): string {
       HTML.classList.add(STANDALONE_CLASS);
     }
 
-    var current = false;
-    try {
-      current = localStorage.getItem(STORAGE_KEY) === 'true';
+    function readStored() {
+      try {
+        return localStorage.getItem(STORAGE_KEY);
+      }
+      catch (e) {
+        return null;
+      }
     }
-    catch (e) { /* storage unavailable */ }
+
+    var current = readStored() === 'true';
     if (current) {
       HTML.classList.add(ON_CLASS);
+    }
+
+    /* ------------------------------------------------------------------
+       Smart direction — one decision per message, one per table
+       ------------------------------------------------------------------ */
+
+    var engine = null;
+    var knownRoots = new WeakSet();
+    var settled = new WeakMap();
+    var prior = null;
+
+    function countLetters(el) {
+      var rtl = 0;
+      var ltr = 0;
+      var walker = DOC.createTreeWalker(el, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+        acceptNode: function (node) {
+          if (node.nodeType === 1) {
+            return node.matches(NON_PROSE_SELECTOR) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      var node;
+      var found;
+      while ((node = walker.nextNode())) {
+        if (!node.nodeValue) { continue; }
+        found = node.nodeValue.match(RTL_LETTER);
+        if (found) { rtl += found.length; }
+        found = node.nodeValue.match(LTR_LETTER);
+        if (found) { ltr += found.length; }
+      }
+      return [rtl, ltr];
+    }
+
+    function judge(el, lean, isMessage) {
+      var fixed = settled.get(el);
+      var dir = fixed;
+      if (fixed && isMessage) { prior = fixed; }
+      if (!fixed) {
+        var counts = countLetters(el);
+        // Lean on what the element already shows; before that, on the
+        // conversation (messages) or the enclosing message (tables).
+        var shown = el.getAttribute(DIR_ATTR);
+        dir = decideDirection(counts[0], counts[1], shown || (isMessage ? prior : lean));
+        if (dir && isSettled(dir, counts[0], counts[1])) {
+          settled.set(el, dir);
+        }
+        // The latest message with real evidence sets the conversation's lean —
+        // including a short question from the user, which is the best predictor
+        // of the language the reply will come back in.
+        if (isMessage && dir && counts[0] + counts[1] >= 8) { prior = dir; }
+      }
+      if (dir && el.getAttribute(DIR_ATTR) !== dir) {
+        el.setAttribute(DIR_ATTR, dir);
+      }
+      return dir;
+    }
+
+    function judgeMessage(root) {
+      var dir = judge(root, null, true);
+      var tables = root.getElementsByTagName('table');
+      for (var i = 0; i < tables.length; i++) {
+        judge(tables[i], dir, false);
+      }
+    }
+
+    function collect(node, into) {
+      if (!node || node.nodeType !== 1) { return; }
+      if (node.matches(ROOT_SELECTOR)) {
+        knownRoots.add(node);
+        into.add(node);
+      }
+      if (node.firstElementChild) {
+        var found = node.querySelectorAll(ROOT_SELECTOR);
+        for (var i = 0; i < found.length; i++) {
+          knownRoots.add(found[i]);
+          into.add(found[i]);
+        }
+      }
+    }
+
+    function rootAbove(node) {
+      var el = node && (node.nodeType === 1 ? node : node.parentElement);
+      for (var depth = 0; el && depth < 64; depth++) {
+        if (knownRoots.has(el)) { return el; }
+        el = el.parentElement;
+      }
+      return null;
+    }
+
+    function onMutations(records) {
+      var touched = new Set();
+      for (var i = 0; i < records.length; i++) {
+        var root = rootAbove(records[i].target);
+        if (root) { touched.add(root); }
+        var added = records[i].addedNodes;
+        for (var j = 0; j < added.length; j++) {
+          collect(added[j], touched);
+        }
+      }
+      touched.forEach(judgeMessage);
+    }
+
+    function startEngine() {
+      if (engine || MODE !== 'smart' || !DOC.body) { return; }
+      var initial = new Set();
+      collect(DOC.body, initial);
+      initial.forEach(judgeMessage);
+      engine = new MutationObserver(onMutations);
+      engine.observe(DOC.body, { childList: true, subtree: true, characterData: true });
+    }
+
+    function stopEngine() {
+      if (engine) {
+        engine.disconnect();
+        engine = null;
+      }
+    }
+
+    function syncEngine() {
+      if (current) { startEngine(); }
+      else { stopEngine(); }
     }
 
     /* ------------------------------------------------------------------
@@ -363,17 +525,16 @@ export function buildJs(_options: ContentOptions): string {
     }
 
     function apply(on) {
-      if (on === current) {
-        syncButton();
-        return;
+      if (on !== current) {
+        current = on;
+        HTML.classList.toggle(ON_CLASS, on);
+        try {
+          localStorage.setItem(STORAGE_KEY, on ? 'true' : 'false');
+        }
+        catch (e) { /* storage unavailable */ }
       }
-      current = on;
-      HTML.classList.toggle(ON_CLASS, on);
-      try {
-        localStorage.setItem(STORAGE_KEY, on ? 'true' : 'false');
-      }
-      catch (e) { /* storage unavailable */ }
       syncButton();
+      syncEngine();
     }
 
     // Keeps the main window and the standalone agent window in lockstep.
@@ -384,11 +545,11 @@ export function buildJs(_options: ContentOptions): string {
     });
 
     /* ------------------------------------------------------------------
-       Status bar bridge (main window only)
+       Status bar bridge
 
-       The extension host owns the persisted state. It cannot touch this DOM and
-       we cannot call into it, so the status bar item is the channel in both
-       directions: we read its label, and we click it to request a toggle.
+       The extension host owns the persisted state but cannot touch this DOM,
+       so the status bar item is the channel both ways: we read its label, and
+       click it to request a toggle.
        ------------------------------------------------------------------ */
 
     var statusEl = null;
@@ -428,9 +589,9 @@ export function buildJs(_options: ContentOptions): string {
       sawStatus = true;
       missingSince = 0;
 
-      // Adopt the label only when it actually says something new. VS Code may
-      // replace this element on re-render; re-reading an unchanged label would
-      // otherwise undo a toggle we just applied locally.
+      // Adopt the label only when it says something new: VS Code may replace
+      // this element on re-render, and re-reading an unchanged label would undo
+      // a toggle just applied locally.
       var initial = readStatus(el);
       if (initial !== null && initial !== lastStatusValue) {
         lastStatusValue = initial;
@@ -449,21 +610,35 @@ export function buildJs(_options: ContentOptions): string {
 
     /* ------------------------------------------------------------------
        Toggle button
+
+       Hosts render several "New Conversation" buttons, some of them hidden —
+       Antigravity 2.6.0 has three — so the anchor is the first *visible* one,
+       in order of how specific the hook is, and the button moves if its anchor
+       stops being visible.
        ------------------------------------------------------------------ */
 
     var ANCHORS = [
+      '[data-testid="extension-new-conversation"]',
       '[data-tooltip-id="new-conversation-tooltip"]',
-      '[data-tooltip-id*="new-conversation"]',
-      '[data-tooltip-id*="new-chat"]',
+      '[data-testid="new-conversation-button"]',
       '[aria-label="New Conversation"]',
+      '[data-tooltip-id*="new-conversation"]',
       '[aria-label*="New Chat"]',
       '[title*="New Conversation"]'
     ];
 
+    function isVisible(el) {
+      return !!(el && el.isConnected && el.getClientRects().length > 0);
+    }
+
     function findAnchor() {
       for (var i = 0; i < ANCHORS.length; i++) {
-        var el = DOC.querySelector(ANCHORS[i]);
-        if (el) { return el; }
+        var candidates = DOC.querySelectorAll(ANCHORS[i]);
+        for (var j = 0; j < candidates.length; j++) {
+          if (candidates[j].id !== BTN_ID && isVisible(candidates[j])) {
+            return candidates[j];
+          }
+        }
       }
       return null;
     }
@@ -485,25 +660,7 @@ export function buildJs(_options: ContentOptions): string {
       }
     }
 
-    var hostObserver = null;
-
-    function watchHost(host) {
-      if (hostObserver) { hostObserver.disconnect(); }
-      // childList on the header container only — it does not mutate while text streams.
-      hostObserver = new MutationObserver(function () {
-        var b = DOC.getElementById(BTN_ID);
-        if (!b || !b.isConnected) { ensureButton(); }
-      });
-      hostObserver.observe(host, { childList: true });
-    }
-
-    function ensureButton() {
-      var existing = DOC.getElementById(BTN_ID);
-      if (existing && existing.isConnected) { return; }
-
-      var anchor = findAnchor();
-      if (!anchor || !anchor.parentNode) { return; }
-
+    function createButton(anchor) {
       var btn = DOC.createElement('div');
       btn.id = BTN_ID;
       btn.setAttribute('role', 'button');
@@ -520,18 +677,95 @@ export function buildJs(_options: ContentOptions): string {
       btn.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' || e.key === ' ') { onToggle(e); }
       });
+      return btn;
+    }
 
+    var hostObserver = null;
+
+    function watchHost(host) {
+      if (hostObserver) { hostObserver.disconnect(); }
+      // childList on the header container only — it does not mutate while text streams.
+      hostObserver = new MutationObserver(function () {
+        var b = DOC.getElementById(BTN_ID);
+        if (!b || !b.isConnected) { ensureButton(); }
+      });
+      hostObserver.observe(host, { childList: true });
+    }
+
+    function ensureButton() {
+      var btn = DOC.getElementById(BTN_ID);
+      if (isVisible(btn)) { return; }
+
+      var anchor = findAnchor();
+      if (!anchor || !anchor.parentNode) { return; }
+
+      if (!btn) { btn = createButton(anchor); }
       anchor.parentNode.insertBefore(btn, anchor.nextSibling);
       syncButton();
       watchHost(anchor.parentNode);
     }
 
     /* ------------------------------------------------------------------
+       Diagnostics — run window.__rtlAgents.diagnose() in DevTools
+       ------------------------------------------------------------------ */
+
+    function describe(el) {
+      if (!el) { return null; }
+      return {
+        tag: el.tagName.toLowerCase(),
+        testId: el.getAttribute('data-testid'),
+        tooltipId: el.getAttribute('data-tooltip-id'),
+        ariaLabel: el.getAttribute('aria-label'),
+        visible: isVisible(el)
+      };
+    }
+
+    function diagnose() {
+      var roots = DOC.querySelectorAll(ROOT_SELECTOR);
+      var samples = [];
+      for (var i = 0; i < roots.length && samples.length < 6; i++) {
+        var style = getComputedStyle(roots[i]);
+        samples.push({
+          decided: roots[i].getAttribute(DIR_ATTR),
+          settled: settled.get(roots[i]) || null,
+          direction: style.direction,
+          textAlign: style.textAlign,
+          text: (roots[i].textContent || '').replace(/\\s+/g, ' ').slice(0, 48)
+        });
+      }
+      var probe = getComputedStyle(HTML).getPropertyValue('--rtl-agents-version').trim();
+      return {
+        version: VERSION,
+        mode: MODE,
+        active: current,
+        window: isStandalone ? 'agent' : 'main',
+        stylesheet: probe ? probe.replace(/"/g, '') : 'NOT LOADED',
+        htmlClass: HTML.className,
+        storedState: readStored(),
+        statusBarItem: statusEl ? (statusEl.textContent || '').trim() : null,
+        anchor: describe(findAnchor()),
+        button: describe(DOC.getElementById(BTN_ID)),
+        engine: engine ? 'observing' : 'idle',
+        conversationPrior: prior,
+        messageRoots: roots.length,
+        samples: samples
+      };
+    }
+
+    window.__rtlAgents = {
+      version: VERSION,
+      mode: MODE,
+      diagnose: diagnose,
+      enable: function () { apply(true); return diagnose(); },
+      disable: function () { apply(false); return diagnose(); },
+      toggle: function () { onToggle(); return current; }
+    };
+
+    /* ------------------------------------------------------------------
        Teardown
 
        When the extension is deactivated or uninstalled its status bar item
-       disappears. That is our signal to remove the button and stand down —
-       previously the button survived with nothing behind it.
+       disappears. That is the signal to remove the button and stand down.
        ------------------------------------------------------------------ */
 
     var pollTimer = null;
@@ -540,6 +774,7 @@ export function buildJs(_options: ContentOptions): string {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       if (statusObserver) { statusObserver.disconnect(); statusObserver = null; }
       if (hostObserver) { hostObserver.disconnect(); hostObserver = null; }
+      stopEngine();
 
       var b = DOC.getElementById(BTN_ID);
       if (b && b.parentNode) { b.parentNode.removeChild(b); }
@@ -550,29 +785,36 @@ export function buildJs(_options: ContentOptions): string {
         localStorage.removeItem(STORAGE_KEY);
       }
       catch (e) { /* storage unavailable */ }
+      try {
+        delete window.__rtlAgents;
+      }
+      catch (e) { /* non-configurable */ }
     }
 
     function tick() {
-      if (!isStandalone) {
-        if (!statusEl || !statusEl.isConnected) { attachStatus(); }
+      // Attached in every window rather than gated on the file name: a window
+      // without a status bar simply finds nothing, and teardown only arms once
+      // an item has been seen. Gating on the name would silently disable the
+      // bridge the day the host renames its main shell.
+      if (!statusEl || !statusEl.isConnected) { attachStatus(); }
 
-        if (sawStatus && !statusEl) {
-          if (!missingSince) {
-            missingSince = Date.now();
-          }
-          else if (Date.now() - missingSince > SELF_DESTRUCT_MS) {
-            selfDestruct();
-            return;
-          }
+      if (sawStatus && !statusEl) {
+        if (!missingSince) {
+          missingSince = Date.now();
         }
-        else {
-          missingSince = 0;
+        else if (Date.now() - missingSince > SELF_DESTRUCT_MS) {
+          selfDestruct();
+          return;
         }
+      }
+      else {
+        missingSince = 0;
       }
       ensureButton();
     }
 
     function start() {
+      syncEngine();
       tick();
       pollTimer = setInterval(tick, POLL_MS);
     }

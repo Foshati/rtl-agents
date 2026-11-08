@@ -40,60 +40,6 @@ export const PERSIAN_CORPUS: string[] = [
   'RTL و LTR هر دو باید به‌درستی پشتیبانی شوند.',
 ]
 
-type CodeRange = readonly [number, number]
-
-/** Bidi class L — Latin, Latin Extended, Greek and Cyrillic letters. */
-const STRONG_LTR_RANGES: readonly CodeRange[] = [
-  [0x0041, 0x005A], // A-Z
-  [0x0061, 0x007A], // a-z
-  [0x00C0, 0x024F], // Latin-1 Supplement + Latin Extended-A/B
-  [0x0370, 0x03FF], // Greek
-  [0x0400, 0x04FF], // Cyrillic
-]
-
-/**
- * Bidi classes R and AL — Hebrew and Arabic letters, including the Persian
- * additions (پ چ ژ گ ک ی) that live in U+066E-U+06D3, plus presentation forms.
- *
- * The gaps matter as much as the ranges. Both digit blocks are absent —
- * U+0660-U+0669 are AN and U+06F0-U+06F9 are EN, neither of them strong — which
- * is why a line opening with a number still takes its direction from the Persian
- * word after it. Arabic punctuation (U+060C, U+061B, U+061F) is absent for the
- * same reason, and the presentation forms stop at U+FEFC because U+FEFF is a
- * zero-width no-break space rather than a letter.
- */
-const STRONG_RTL_RANGES: readonly CodeRange[] = [
-  [0x05D0, 0x05EA], // Hebrew letters
-  [0x05EF, 0x05F2], // Hebrew ligatures
-  [0x0620, 0x064A], // Arabic letters
-  [0x066E, 0x06D3], // Arabic letters incl. Persian
-  [0x06D5, 0x06D5],
-  [0x06E5, 0x06E6],
-  [0x06EE, 0x06EF],
-  [0x06FA, 0x06FF],
-  [0x0750, 0x077F], // Arabic Supplement
-  [0x08A0, 0x08BD], // Arabic Extended-A
-  [0xFB1D, 0xFB4F], // Hebrew presentation forms
-  [0xFB50, 0xFDFD], // Arabic presentation forms A
-  [0xFE70, 0xFEFC], // Arabic presentation forms B
-]
-
-function inRanges(codePoint: number, ranges: readonly CodeRange[]): boolean {
-  return ranges.some(([low, high]) => codePoint >= low && codePoint <= high)
-}
-
-export function firstStrongDirection(text: string): 'ltr' | 'rtl' | 'neutral' {
-  for (const ch of text) {
-    const codePoint = ch.codePointAt(0)
-    if (codePoint === undefined) {
-      continue
-    }
-    if (inRanges(codePoint, STRONG_RTL_RANGES)) {
-      return 'rtl'
-    }
-    if (inRanges(codePoint, STRONG_LTR_RANGES)) {
-      return 'ltr'
-    }
-  }
-  return 'neutral'
-}
+// The detector lives in src/bidi.ts so the runtime and the tests share one
+// implementation; re-exported here for anything that imported it from the corpus.
+export { firstStrongDirection } from '../src/bidi'

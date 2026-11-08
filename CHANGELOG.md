@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-11-09
+
+### Added
+- **`smart` direction, now the default.** Each message gets its own direction from the share of right-to-left letters in it, with code left out of the count: a Persian reply is RTL, an English reply LTR, and every table is judged on its own, so an English command table inside a Persian answer keeps its columns left to right. The decision runs inside the MutationObserver callback that sees the text arrive — a microtask, delivered before the frame is painted — so a message is never drawn in one direction and then corrected.
+- **Hysteresis against flicker while a reply streams.** A message leans on the direction it already shows and only leaves it on clear evidence; before it shows anything, it leans on the conversation, updated by the latest message — including the user's own question, the best predictor of the language the reply comes back in. Replaying the 30-line Persian corpus word by word in a Persian conversation produces no flip at all, including the 12 lines that open with a Latin term.
+- **`window.__rtlAgents.diagnose()`** in DevTools reports what a live window actually loaded: version, mode, whether the stylesheet arrived, the toggle state, the status bar item, which button the toggle anchored to and whether it is visible, and the decision and computed direction of the first messages. `enable()`, `disable()` and `toggle()` are there too.
+- The composer (Lexical's editable and its paragraphs) and the user's own message bubble are covered. Only the bubble's text column flips; the bubble is a row of icons whose layout stays put.
+- Math (`.katex`) and diagrams (`.mermaid`) are guarded left-to-right alongside code.
+
+### Fixed
+- **The toggle button landed on a hidden element in Antigravity 2.6.0.** 2.6.0 renders three "New Conversation" buttons and the first in DOM order is hidden, so the button was inserted where nobody could see it. The anchor is now the first *visible* match, in order of how specific the hook is, and the button moves when its anchor stops being visible.
+- **Table headers stayed left-aligned in RTL messages.** Antigravity gives `<th>` a physical `text-left`; headers and cells now align to the logical start. Tables are no longer pinned left-to-right — a Persian table reads right to left, with its first column on the right.
+- **The quote bar lost its colour.** Antigravity renamed the variable to `--border`; the fallback chain now covers both names.
+- **2.2.0 flipped markdown outside the chat.** `.markdown`, `.markdown-body` and `.rendered-markdown` were matched everywhere, and the editor uses them for hovers, the settings editor and extension pages. They now count as messages only inside a chat panel.
+- **The status bar bridge depended on the shell's file name.** Any document not named exactly `workbench.html` skipped the bridge, so a renamed main shell would have silently disabled toggling. It is now attached in every window; one without a status bar simply finds nothing.
+- The manifest records the running extension version after assets are reinjected.
+
+### Testing
+- 48 tests. The direction decision is a pure function in `src/bidi.ts`, serialised into the runtime with `toString()`, so the tests exercise the code that ships; a test checks the two are identical. Seven mutations — dropping the hysteresis, choosing the anchor by DOM order, re-gating the bridge on the file name, flipping the whole user bubble, forgetting `text-left` on `th`, matching `.markdown` everywhere, settling RTL on a short greeting — each fail the test meant to catch them.
+- Verified in Chromium against a replica of Antigravity 2.6.0's chat, built from its own compiled stylesheet and the exact class list of its markdown wrapper: list indents, table column order and header alignment, quote bars, inline and block code, the user bubble, the composer, all three toggle paths, and streamed replies — including a conversation that switches between Persian and English with no flip at any step.
+
+### Known limitation
+- **In Persian and Arabic text, digits joined by hyphens or spaces display with their groups reversed** — ISO dates, phone and card numbers, ranges. Measured in Chromium, `تاریخ 2026-11-09` renders the date as `09-11-2026`. This is the Unicode Bidirectional Algorithm: rule W2 turns digits that follow an Arabic-script letter into Arabic numbers, and hyphens and spaces do not join those. Separators that do join — `/ . , :` — are unaffected: `2026/11/09`, `14:30`, `3.14`, `1,250,000` and `2.6.0` all render in order, as does anything inside inline code. A general fix means inserting invisible direction marks into the host's text, which would then appear in copied text and break in-page search, so it is not done here.
+
 ## [2.2.0] - 2026-10-30
 
 ### Fixed

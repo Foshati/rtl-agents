@@ -30,8 +30,8 @@ Optimized for **Persian**, **Arabic**, and **Hebrew**.
 ## ✨ Features
 
 - 🌐 **Multi-IDE Support**: Detects the running editor and patches every workbench document it owns — including Antigravity's separate agent window.
-- ⚡ **Native Bidirectional Alignment**: The Unicode BiDi algorithm places every embedded Latin run, number and punctuation mark. No character regex to maintain, and a sentence opening with `API` or `npm install` stays right-aligned like the rest of the reply.
-- ✨ **Zero Flicker While Streaming**: Alignment lands before the first paint. There is no per-word JavaScript, no document-wide `MutationObserver`, and no measurable CPU cost while a reply generates.
+- ⚡ **Smart Per-Message Direction**: Each message takes its direction from the share of right-to-left letters in it, ignoring code — a Persian reply is RTL, an English one LTR, and each table is judged on its own. A Persian sentence that opens with `API` or `npm install` stays RTL.
+- ✨ **No Flicker While Streaming**: Direction is decided inside the MutationObserver callback that sees the text arrive — delivered before the frame is painted — and leans on the conversation, so a streamed reply does not render one way and then jump. The observer only stamps an attribute on the message root; it never touches the host's text.
 - 🛡️ **Code & Layout Safety**: `pre`, `code`, Monaco editors, and table column order stay LTR — including a code snippet sitting inside a Persian sentence.
 - ⇄ **Native Toggle Button**: Injects a `⇄` button into the chat header next to "New Chat", borrowing its styling. The header button and the status bar item always agree.
 - 💾 **Persistent & Synced**: Remembers your preference across reloads and keeps every patched window in step instantly.
@@ -75,24 +75,32 @@ Because the extension modifies workbench files on disk to reach the chat panel, 
 
 ```json
 {
-  "rtl-agents.baseDirection": "rtl",
-  "rtl-agents.customSelectors": [
-    ".my-custom-chat-panel",
-    "div[class*=\"custom-message-list\"]"
-  ]
+  "rtl-agents.baseDirection": "smart",
+  "rtl-agents.customSelectors": [".my-custom-chat-panel"]
 }
 ```
 
-- `rtl-agents.baseDirection` — `"rtl"` (default) pins every message block to a right-to-left base. `"auto"` lets each paragraph pick its own direction from its first strong character; prefer it only when your chat is mostly left-to-right with occasional RTL passages.
-- `rtl-agents.customSelectors` — Additional **chat container** selectors. Text inside them follows the same base direction as the built-in containers. Editing either setting rewrites the injected stylesheet right away; no re-patch needed.
+- `rtl-agents.baseDirection`
+  - `"smart"` (default) — each message gets its own direction from the share of right-to-left letters in it, ignoring code. A Persian reply is RTL, an English one LTR, and each table is judged on its own. The decision is made before the text is painted and leans on the conversation, so a streamed reply does not flip.
+  - `"rtl"` — pin every message right-to-left, whatever language it is in.
+  - `"auto"` — legacy per-paragraph first-strong-character detection.
+- `rtl-agents.customSelectors` — additional chat container selectors. Editing either setting rewrites the injected stylesheet; reload the window to load it.
 
 > [!NOTE]
-> Why the base is pinned rather than detected: first-strong detection reads the direction from a paragraph's first strong character, so an ordinary Persian sentence opening with `API`, `OTP` or `npm install` flips entirely to LTR — left-aligned, with its trailing Persian punctuation on the wrong side. On a representative corpus that misfires on about 40% of lines. The cost of pinning is that an all-English paragraph is right-aligned, word order intact, which is simply how LTR passages sit in an RTL document.
->
-> Pinning `direction` is only half the job. Hosts indent lists and draw quote bars with *physical* properties (`padding-left`, `border-left`) that do not follow direction, so those are zeroed and restored on the logical start side as well.
+> Why not first-strong detection: an ordinary Persian sentence that opens with `API`, `OTP` or `npm install` resolves entirely left-to-right — about 40% of lines in a representative corpus. Hosts also indent lists and draw quote bars with physical `padding-left` / `border-left`, so those are restored on the logical start side inside RTL messages.
 
 > [!NOTE]
-> `rtl-agents.rtlCharacterRegex` is deprecated as of v2.0.0 and ignored — direction is resolved by the browser, not by scanning characters.
+> In Persian and Arabic text, digits joined by **hyphens or spaces** — ISO dates such as `2026-11-09`, phone and card numbers — show their groups in reverse order. That is the Unicode Bidirectional Algorithm, and a fix would put invisible characters into text you copy. Numbers joined by `/ . , :` (`2026/11/09`, `14:30`, `2.6.0`) and anything in inline code render in order.
+
+## 🩺 Troubleshooting
+
+Open DevTools in the IDE (**Developer: Toggle Developer Tools**) and run:
+
+```js
+__rtlAgents.diagnose()
+```
+
+It reports the loaded version and mode, whether the stylesheet arrived, the toggle state, which button the toggle anchored to, and how the first messages were decided. `__rtlAgents.enable()` turns RTL on directly — if text flips then, the stylesheet works and the problem is in the toggle path. If `__rtlAgents` is undefined, the patch is not loaded: run **RTL Agents: Restart RTL** and fully quit and reopen the IDE.
 
 ## 🛠️ Commands
 

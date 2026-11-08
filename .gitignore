@@ -5,3 +5,4 @@ dist/
 .DS_Store
 .test-out/
 .pnpm-store/
+.claude/launch.json

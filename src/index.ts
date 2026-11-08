@@ -24,10 +24,11 @@ function getOutputChannel(): vscode.OutputChannel {
 function getContentOptions(): ContentOptions {
   const config = vscode.workspace.getConfiguration('rtl-agents')
   const custom = config.get<string[]>('customSelectors', [])
-  const base = config.get<BaseDirection>('baseDirection', 'rtl')
+  const base = config.get<BaseDirection>('baseDirection', 'smart')
   return {
     customSelectors: custom.map(s => s.trim()).filter(Boolean),
-    baseDirection: base === 'auto' ? 'auto' : 'rtl',
+    baseDirection: base === 'rtl' || base === 'auto' ? base : 'smart',
+    extensionVersion: currentVersion,
   }
 }
 
