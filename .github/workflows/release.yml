@@ -4,6 +4,7 @@ permissions:
   contents: write
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -92,12 +93,32 @@ jobs:
       - name: Publish to Open VSX
         id: ovsx
         if: env.OPEN_VSX_TOKEN != ''
-        run: npx ovsx publish "${{ steps.version.outputs.vsix }}" -p "$OPEN_VSX_TOKEN"
+        run: |
+          OUTPUT=$(npx ovsx publish "${{ steps.version.outputs.vsix }}" -p "$OPEN_VSX_TOKEN" 2>&1) || {
+            STATUS=$?
+            echo "$OUTPUT"
+            if echo "$OUTPUT" | grep -qi "already published"; then
+              echo "::notice::Version is already published on Open VSX"
+            else
+              exit $STATUS
+            fi
+          }
+          echo "$OUTPUT"
 
       - name: Publish to VS Code Marketplace
         id: vsce
         if: env.VSCE_PAT != ''
-        run: npx @vscode/vsce publish --packagePath "${{ steps.version.outputs.vsix }}" --pat "$VSCE_PAT"
+        run: |
+          OUTPUT=$(npx @vscode/vsce publish --packagePath "${{ steps.version.outputs.vsix }}" --pat "$VSCE_PAT" 2>&1) || {
+            STATUS=$?
+            echo "$OUTPUT"
+            if echo "$OUTPUT" | grep -qi "already published"; then
+              echo "::notice::Version is already published on VS Code Marketplace"
+            else
+              exit $STATUS
+            fi
+          }
+          echo "$OUTPUT"
 
       - name: Report skipped registries
         if: env.OPEN_VSX_TOKEN == '' || env.VSCE_PAT == ''
