@@ -14,6 +14,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import process from 'node:process'
 
+import { countStrong, decideDirection, firstStrongDirection, isSettled } from '../src/bidi'
 import {
   buildCss,
   buildJs,
@@ -21,10 +22,11 @@ import {
   hasPatch,
   JS_FILENAME,
   MANIFEST_FILENAME,
+  messageRootSelectors,
   stripInjected,
 } from '../src/content'
 import { addRtl, getStatus, isFullyInstalled, reinjectAssets, removeRtl } from '../src/injector'
-import { firstStrongDirection, PERSIAN_CORPUS } from './corpus'
+import { PERSIAN_CORPUS } from './corpus'
 
 const FIXTURES = path.resolve(process.cwd(), 'test', 'fixtures')
 const WB_REL = path.join('out', 'vs', 'code', 'electron-browser', 'workbench')
@@ -89,14 +91,40 @@ async function makeInstallation(docs: Record<string, string>): Promise<IdeInstal
   }
 }
 
-const OPTIONS = { customSelectors: [], baseDirection: 'rtl' as const, extensionVersion: '2.1.0' }
+const OPTIONS = { customSelectors: [], baseDirection: 'smart' as const, extensionVersion: '2.3.0' }
+const SMART = { customSelectors: [], baseDirection: 'smart' as const }
 const RTL = { customSelectors: [], baseDirection: 'rtl' as const }
 const AUTO = { customSelectors: [], baseDirection: 'auto' as const }
 
-/** The rule that carries the base direction for rendered message text. */
-function messageTextRule(css: string): string {
-  const start = css.indexOf('Message text')
-  return css.slice(start, css.indexOf('Composer'))
+/** The section holding the direction rules for the chosen mode. */
+function directionSection(css: string): string {
+  return css.slice(css.indexOf('Message direction'), css.indexOf('Composer'))
+}
+
+/** Directions a message shows while it streams in, word by word. */
+function streamDirections(text: string, prior: 'rtl' | 'ltr' | null): string[] {
+  const seen: string[] = []
+  let shown = ''
+  let settled: string | null = null
+  for (const word of text.split(' ')) {
+    shown += `${word} `
+    if (settled) {
+      seen.push(settled)
+      continue
+    }
+    const [rtl, ltr] = countStrong(shown)
+    const last = seen.at(-1)
+    const dir = decideDirection(rtl, ltr, last === 'rtl' || last === 'ltr' ? last : prior)
+    if (dir && isSettled(dir, rtl, ltr)) {
+      settled = dir
+    }
+    seen.push(dir ?? '-')
+  }
+  return seen
+}
+
+function flips(seen: string[]): number {
+  return seen.filter((d, i) => i > 0 && d !== seen[i - 1] && seen[i - 1] !== '-').length
 }
 
 type Specificity = [ids: number, classes: number, types: number]
@@ -318,21 +346,20 @@ async function main(): Promise<void> {
 
   group('generated assets')
 
-  await test('CSS pins an RTL base and needs no JS in the direction path', () => {
-    const css = buildCss(RTL)
-    assert.match(messageTextRule(css), /direction: rtl !important/)
-    assert.match(css, /html\.rtl-agents-on/)
-    // The markdown wrapper's stable hook, carried in both Antigravity bundles.
-    assert.match(css, /\.md-divider-spacing/)
-    assert.match(css, /rtl-agents-standalone/)
+  await test('the stylesheet announces its version and mode to a running window', () => {
+    const css = buildCss({ ...SMART, extensionVersion: '9.9.9' })
+    assert.match(css, /--rtl-agents-version: "9\.9\.9"/)
+    assert.match(css, /--rtl-agents-mode: "smart"/)
   })
 
-  await test('CSS keeps code and table layout LTR', () => {
-    const css = buildCss(RTL)
-    const guard = css.slice(css.indexOf('Layout safety'))
-    assert.match(guard, /\bpre\b/)
-    assert.match(guard, /\bcode\b/)
-    assert.match(guard, /html\.rtl-agents-on table \{\s*direction: ltr/)
+  await test('everything is gated behind the root class', () => {
+    for (const opts of [SMART, RTL, AUTO]) {
+      const css = buildCss(opts)
+      const body = css.slice(css.indexOf('Message direction'))
+      for (const rule of body.split('}').map(r => r.split('{')[0]).filter(r => r.trim() && !r.includes('*/') && /[.#[:a-z]/i.test(r))) {
+        assert.match(rule, /html\.rtl-agents-on/, `ungated rule in ${opts.baseDirection} mode: ${rule.trim().slice(0, 80)}`)
+      }
+    }
   })
 
   await test('customSelectors reach the stylesheet', () => {
@@ -340,176 +367,214 @@ async function main(): Promise<void> {
   })
 
   await test('runtime is valid JS and avoids the v1 failure modes', () => {
-    const js = buildJs(RTL)
-    // eslint-disable-next-line no-new-func
-    void new Function(js)
-    assert.match(js, /\.statusbar-item/, 'must use the real VS Code status bar class')
-    assert.doesNotMatch(js, /\.status-bar-item/, 'the hyphenated class matches nothing')
-    assert.doesNotMatch(js, /command:rtl-agents/, 'command: hrefs do not work in the workbench')
-    assert.doesNotMatch(js, /observe\(\s*(?:DOC|document)\.body/, 'no document-wide observer')
-    assert.match(js, /selfDestruct/, 'must clean up when the extension goes away')
-  })
-
-  group('host version drift')
-
-  /** The rule that flips a whole rendered message, independent of any panel class. */
-  function messageRootRule(css: string): string {
-    const marker = css.indexOf('The markdown root of a message')
-    if (marker === -1) {
-      return ''
-    }
-    const start = css.indexOf('*/', marker) + 2
-    return css.slice(start, css.indexOf('}', start) + 1)
-  }
-
-  await test('a whole message is flipped at its markdown root', () => {
-    // Enumerating elements inside a message is what keeps breaking: 2.5.5 wrapped
-    // each streamed paragraph in div.animate-markdown, 2.6.0 emits bare spans.
-    // `direction` inherits, so the root is flipped instead.
-    const rule = messageRootRule(buildCss(RTL))
-    assert.ok(rule, 'message-root rule missing')
-    assert.match(rule, /\.md-divider-spacing/)
-    assert.match(rule, /direction: rtl !important/)
-  })
-
-  await test('the message root needs no panel class to match', () => {
-    // Antigravity 2.6.0 removed .antigravity-agent-side-panel outright. A rule that
-    // depends on a panel class stops matching the moment the host renames one.
-    const rule = messageRootRule(buildCss(RTL))
-    const selector = rule.split('{')[0]
-    for (const panel of ['antigravity-agent-side-panel', 'interactive-session', 'chat-container']) {
-      assert.doesNotMatch(selector, new RegExp(panel), `message root must not require .${panel}`)
+    for (const opts of [SMART, RTL, AUTO]) {
+      const js = buildJs(opts)
+      // eslint-disable-next-line no-new-func
+      void new Function(js)
+      assert.match(js, /\.statusbar-item/, 'must use the real VS Code status bar class')
+      assert.doesNotMatch(js, /\.status-bar-item/, 'the hyphenated class matches nothing')
+      assert.doesNotMatch(js, /command:rtl-agents/, 'command: hrefs do not work in the workbench')
+      assert.match(js, /selfDestruct/, 'must clean up when the extension goes away')
+      assert.match(js, /__rtlAgents/, 'must expose the diagnostics API')
     }
   })
 
-  await test('physical fixes reach the markdown root as well as the panel', () => {
-    const section = physicalSection(buildCss(RTL))
-    const group = section.match(/([^{}]+)\{\s*padding-left: 0 !important/)?.[1] ?? ''
-    assert.match(group, /\.md-divider-spacing/, 'list indent fix misses the markdown root')
-    assert.match(group, /rtl-agents-standalone/)
+  await test('the runtime ships the same decision functions the tests exercise', () => {
+    const js = buildJs(SMART)
+    assert.match(js, /var decideDirection = \(/)
+    assert.match(js, /var isSettled = \(/)
+    // Serialised from src/bidi.ts, so the code under test is the code that ships.
+    assert.ok(js.includes(decideDirection.toString()))
+    assert.ok(js.includes(isSettled.toString()))
   })
 
-  await test('the composer covers the agent input box', () => {
-    const css = buildCss(RTL)
-    const composer = css.slice(css.indexOf('Composer'), css.indexOf('Layout safety'))
-    assert.match(composer, /agent-input-box/)
+  await test('the status bar bridge is not gated on the shell file name', () => {
+    // Gating on `workbench.html` would silently disable toggling the day the host
+    // renames its main shell; a window without a status bar just finds nothing.
+    const js = buildJs(SMART)
+    const tick = js.slice(js.indexOf('function tick()'), js.indexOf('function start()'))
+    assert.doesNotMatch(tick, /isStandalone/)
+    assert.match(tick, /attachStatus\(\)/)
   })
 
-  await test('code and tables still override the inherited direction', () => {
-    const css = buildCss(RTL)
-    // Both rules are !important at equal specificity, so the guard must come last.
-    assert.ok(
-      css.indexOf('Layout safety') > css.indexOf('The markdown root of a message'),
-      'the LTR guard must follow the message-root rule to win the cascade',
-    )
-    const guard = css.slice(css.indexOf('Layout safety'))
-    assert.match(guard, /direction: ltr !important/)
-    assert.match(guard, /html\.rtl-agents-on table \{\s*direction: ltr/)
+  await test('the toggle button anchors to a visible New Conversation button', () => {
+    const js = buildJs(SMART)
+    // Antigravity 2.6.0 renders three; the first in DOM order is hidden.
+    assert.match(js, /data-testid="extension-new-conversation"/)
+    const find = js.slice(js.indexOf('function findAnchor()'), js.indexOf('function onToggle('))
+    assert.match(find, /isVisible\(/, 'the anchor must be chosen by visibility, not DOM order')
   })
 
-  group('base direction')
+  group('message roots')
 
-  await test('the corpus still exercises the first-strong hazard', () => {
-    const ltrFirst = PERSIAN_CORPUS.filter(l => firstStrongDirection(l) === 'ltr')
-    assert.ok(
-      ltrFirst.length >= 10,
-      `only ${ltrFirst.length} corpus lines open with a strong LTR character — the corpus no longer covers the bug`,
-    )
-    // Every line is Persian prose; none should be genuinely left-to-right.
+  await test('the markdown root and the user bubble identify themselves', () => {
+    const roots = messageRootSelectors(SMART)
+    assert.ok(roots.includes('.md-divider-spacing'))
+    assert.ok(roots.some(r => r.startsWith('[data-testid="user-message-bubble"]')))
+  })
+
+  await test('the user bubble flips its text column, not the bubble', () => {
+    // The bubble is a flex row of icons; flipping it would move them.
+    for (const root of messageRootSelectors(SMART).filter(r => r.includes('user-message-bubble'))) {
+      assert.match(root, /user-message-bubble"\] (?:> )?\./, `bubble root must target a child: ${root}`)
+    }
+  })
+
+  await test('generic markdown classes only count inside a chat panel', () => {
+    // The editor renders hovers, settings and extension pages with these.
+    for (const root of messageRootSelectors(SMART)) {
+      if (/\.(?:rendered-markdown|markdown-body|markdown)\b/.test(root)) {
+        assert.match(root, /^\.(?:antigravity-agent-side-panel|rtl-agents-root|interactive-session|chat-container) /, `unscoped: ${root}`)
+      }
+    }
+  })
+
+  await test('no message root depends on a panel class that 2.6.0 removed', () => {
+    for (const root of messageRootSelectors(SMART).filter(r => r.includes('md-divider-spacing'))) {
+      assert.doesNotMatch(root, /antigravity-agent-side-panel/)
+    }
+  })
+
+  group('smart direction')
+
+  await test('every corpus line settles RTL', () => {
     for (const line of PERSIAN_CORPUS) {
-      assert.ok(/[\u0600-\u06FF]/.test(line), `not Persian: ${line}`)
+      const [rtl, ltr] = countStrong(line)
+      const dir = decideDirection(rtl, ltr, null)
+      assert.equal(dir, 'rtl', `resolved ${dir}: ${line}`)
     }
   })
 
-  await test('default mode does not resolve direction from the first character', () => {
-    const rule = messageTextRule(buildCss(RTL))
-    assert.match(rule, /direction: rtl !important/)
-    assert.doesNotMatch(
-      rule,
-      /unicode-bidi: plaintext/,
-      'first-strong resolution mis-aligns the ~40% of Persian lines that open with a Latin term',
-    )
-    assert.match(rule, /text-align: right !important/)
+  await test('an English reply resolves LTR, even quoting a Persian word', () => {
+    for (const line of [
+      'Here is the updated release workflow with idempotent publishing.',
+      'The word «سلام» means hello, and it is the most common greeting in Persian.',
+    ]) {
+      const [rtl, ltr] = countStrong(line)
+      assert.equal(decideDirection(rtl, ltr, null), 'ltr', line)
+    }
   })
 
-  await test('lists carry the base direction, so markers and indent follow the text', () => {
-    // ::marker sits on the side given by the list item's `direction`, and the UA
-    // indent resolves against the list's — both stay left if only `li` is styled.
-    const rule = messageTextRule(buildCss(RTL))
-    assert.match(rule, /\bul\b/)
-    assert.match(rule, /\bol\b/)
-    assert.match(rule, /\bli\b/)
+  await test('a Persian reply never flips while it streams in a Persian conversation', () => {
+    // Replays each corpus line word by word, the way the 2.6.0 renderer appends
+    // spans. 12 of these open with a Latin term — the case first-strong broke.
+    for (const line of PERSIAN_CORPUS) {
+      const seen = streamDirections(line, 'rtl')
+      assert.ok(seen.every(d => d === 'rtl'), `flipped: ${seen.join(' ')} — ${line}`)
+    }
   })
 
-  await test('inline code keeps LTR order without being force-aligned', () => {
-    const css = buildCss(RTL)
-    const isolation = css.slice(css.indexOf('Isolation keeps'), css.indexOf('Alignment is pinned'))
-    assert.match(isolation, /\bcode\b/)
-    assert.match(isolation, /direction: ltr !important/)
-    assert.match(isolation, /unicode-bidi: isolate !important/)
+  await test('switching language mid-conversation flips at most once, early', () => {
+    const english = streamDirections('Here is the updated release workflow with idempotent publishing and manual dispatch.', 'rtl')
+    assert.ok(flips(english) <= 1, english.join(' '))
+    assert.equal(english.at(-1), 'ltr')
+    assert.ok(english.indexOf('ltr') <= 4, `switched too late: ${english.join(' ')}`)
 
-    // text-align applies to block boxes only — never to a bare inline <code>.
-    const alignment = css.slice(css.indexOf('Alignment is pinned'), css.indexOf('Column order'))
-    assert.match(alignment, /text-align: left !important/)
-    assert.doesNotMatch(alignment, /(?:^|[(,\s])code[),\s]/, 'inline <code> must not be force-aligned')
+    const persian = streamDirections('PackPost یک مارکت‌پلیس نظیربه‌نظیر برای فروش ظرفیت خالی چمدان است.', 'ltr')
+    assert.ok(flips(persian) <= 1, persian.join(' '))
+    assert.equal(persian.at(-1), 'rtl')
   })
 
-  await test('the composer resolves per paragraph in both modes', () => {
-    for (const opts of [RTL, AUTO]) {
+  await test('an English reply quoting a Persian word does not flip back', () => {
+    const seen = streamDirections('Here is the fix. The word «سلام» means hello and it is used as a greeting in every Persian conversation we tested.', 'rtl')
+    assert.ok(flips(seen) <= 1, seen.join(' '))
+    assert.equal(seen.at(-1), 'ltr')
+  })
+
+  await test('a Persian greeting opening an English reply does not lock it RTL', () => {
+    const seen = streamDirections('سلام دوست عزیز! Here is the complete explanation of the release workflow and why publishing is idempotent now across every registry we support.', null)
+    assert.equal(seen.at(-1), 'ltr', seen.join(' '))
+  })
+
+  await test('a settled RTL message never reverts, however much English it quotes', () => {
+    assert.equal(isSettled('rtl', 30, 10), true)
+    // Once settled the runtime stops re-evaluating, so a long English code
+    // explanation further down cannot flip the message back.
+    assert.equal(isSettled('rtl', 12, 8), false, 'a short Persian greeting must not lock an English reply')
+    assert.equal(isSettled('rtl', 3, 4), false)
+    assert.equal(isSettled('ltr', 0, 120), true)
+    assert.equal(isSettled('ltr', 1, 500), false, 'one RTL letter keeps an LTR message open')
+  })
+
+  await test('digits and punctuation carry no direction', () => {
+    assert.deepEqual(countStrong('۱۴۰۳/۰۸/۱۵ — 1,250,000 ٪ ، ؟ 2.6.0'), [0, 0])
+    assert.equal(decideDirection(0, 0, null), null)
+    assert.equal(decideDirection(0, 0, 'rtl'), 'rtl')
+  })
+
+  await test('the detector agrees with the corpus expectations', () => {
+    const ltrFirst = PERSIAN_CORPUS.filter(l => firstStrongDirection(l) === 'ltr')
+    assert.ok(ltrFirst.length >= 10, `only ${ltrFirst.length} lines exercise the first-strong hazard`)
+  })
+
+  group('direction modes')
+
+  await test('smart mode flips by decided attribute, not by first character', () => {
+    const css = buildCss(SMART)
+    const section = directionSection(css)
+    assert.match(section, /\[data-rtl-agents-dir="rtl"\] \{\s*direction: rtl !important;\s*text-align: start !important/)
+    assert.match(section, /\[data-rtl-agents-dir="ltr"\] \{\s*direction: ltr !important/)
+    assert.doesNotMatch(section, /unicode-bidi: plaintext/)
+  })
+
+  await test('pinned mode flips every message root', () => {
+    const section = directionSection(buildCss(RTL))
+    assert.match(section, /:is\([^)]*\.md-divider-spacing[^{]*\{\s*direction: rtl !important/)
+    assert.doesNotMatch(section, /unicode-bidi: plaintext/)
+  })
+
+  await test('auto mode keeps per-paragraph resolution as an opt-in', () => {
+    const section = directionSection(buildCss(AUTO))
+    assert.match(section, /unicode-bidi: plaintext !important/)
+    assert.doesNotMatch(section, /direction: rtl/)
+    assert.doesNotMatch(section, /padding-inline-start/)
+    assert.doesNotMatch(section, /border-inline-start/)
+  })
+
+  await test('the composer resolves per paragraph in every mode', () => {
+    for (const opts of [SMART, RTL, AUTO]) {
       const css = buildCss(opts)
       const composer = css.slice(css.indexOf('Composer'), css.indexOf('Layout safety'))
-      assert.match(composer, /textarea/)
+      assert.match(composer, /agent-input-box/)
+      // Lexical renders paragraphs inside the editable; unicode-bidi does not inherit.
+      assert.match(composer, /contenteditable="true"\] :is\(p, div\)/)
       assert.match(composer, /unicode-bidi: plaintext !important/)
     }
   })
 
-  await test('auto mode restores per-paragraph resolution as an opt-in', () => {
-    const rule = messageTextRule(buildCss(AUTO))
-    assert.match(rule, /unicode-bidi: plaintext !important/)
-    assert.doesNotMatch(rule, /direction: rtl/)
-    // Lists stay LTR in auto mode: a mostly-English chat wants left markers.
-    assert.doesNotMatch(rule, /,\s*ul,\s*ol\)/)
-  })
+  group('layout inside an RTL message')
 
-  await test('the two modes produce different stylesheets', () => {
-    assert.notEqual(buildCss(RTL), buildCss(AUTO))
-    assert.match(buildCss(RTL), /base direction: rtl/)
-    assert.match(buildCss(AUTO), /base direction: auto/)
-  })
+  for (const [label, opts] of [['smart', SMART], ['pinned', RTL]] as const) {
+    await test(`${label}: list indent moves to the logical start side`, () => {
+      const section = directionSection(buildCss(opts))
+      // Antigravity indents with `[&_ol]:pl-10` / `[&>ol]:!pl-4` — physical.
+      assert.match(section, /:is\(ul, ol\) \{\s*padding-left: 0 !important;\s*padding-inline-start: 2\.5rem !important/)
+      assert.match(section, /> :is\(ul, ol\):not\(\.contains-task-list\) \{\s*padding-inline-start: 1\.25rem/)
+      assert.match(section, /> :is\(ul, ol\)\.contains-task-list \{\s*padding-inline-start: 0/)
+    })
 
-  group('physical properties set by the host')
+    await test(`${label}: table cells and headers follow the direction`, () => {
+      // Antigravity gives <th> a physical `text-left`.
+      assert.match(directionSection(buildCss(opts)), /:is\(th, td, \.text-left\) \{\s*text-align: start !important/)
+    })
 
-  /** The section that translates the host's physical indent/border into logical ones. */
-  function physicalSection(css: string): string {
-    const marker = css.indexOf('Physical properties set by the host')
-    if (marker === -1) {
-      return ''
-    }
-    // The marker sits inside a comment: back up to its opener, then strip every
-    // comment so selector extraction never reads prose as CSS.
-    const start = css.lastIndexOf('/*', marker)
-    return css.slice(start).replace(/\/\*[\s\S]*?\*\//g, '')
+    await test(`${label}: the quote bar moves to the logical start side`, () => {
+      const section = directionSection(buildCss(opts))
+      assert.match(section, /blockquote \{\s*border-left: none !important;\s*border-inline-start: 4px solid var\(--border,/)
+    })
+
+    await test(`${label}: every list fix outranks the host's !important indent`, () => {
+      // `[&>ol:not(.contains-task-list)]:!pl-4` compiles to `.<utility> > ol:not(…)`,
+      // specificity (0,2,1). Ours is !important too, so specificity decides.
+      const section = directionSection(buildCss(opts))
+      const group = section.match(/([^{}]+)\{\s*padding-left: 0 !important/)?.[1] ?? ''
+      const host: Specificity = [0, 2, 1]
+      for (const sel of splitTopLevel(group.replace(/\/\*[\s\S]*?\*\//g, ''))) {
+        const ours = specificity(sel)
+        assert.ok(compareSpecificity(ours, host) > 0, `(${ours}) does not beat (${host}) for "${sel.trim()}"`)
+      }
+    })
   }
-
-  await test('list indent moves to the logical start side', () => {
-    const section = physicalSection(buildCss(RTL))
-    assert.ok(section, 'physical-property section missing in rtl mode')
-    // Antigravity indents with `[&_ol]:pl-10` / `[&>ol]:!pl-4` — physical, so it
-    // stays on the left under an RTL base and the marker has nowhere to sit.
-    assert.match(section, /:is\(ul, ol\)\s*\{\s*padding-left: 0 !important/)
-    assert.match(section, /padding-inline-start: 2\.5rem !important/)
-  })
-
-  await test('task lists keep their zero indent', () => {
-    const section = physicalSection(buildCss(RTL))
-    assert.match(section, /:is\(ul, ol\):not\(\.contains-task-list\)[^{]*\{\s*padding-inline-start/)
-  })
-
-  await test('the quote bar moves to the logical start side', () => {
-    const section = physicalSection(buildCss(RTL))
-    // Antigravity draws it with an inline `borderLeft`; !important in a stylesheet still wins.
-    assert.match(section, /blockquote[^{]*\{\s*border-left: none !important;\s*border-inline-start: 4px solid/)
-  })
 
   await test('the specificity calculator agrees with known values', () => {
     assert.deepEqual(specificity('html.rtl-agents-on :is(.a, .b) :is(ul, ol)'), [0, 2, 2])
@@ -517,40 +582,40 @@ async function main(): Promise<void> {
     assert.deepEqual(specificity('.u > ol:not(.t)'), [0, 2, 1])
     assert.deepEqual(specificity(':where(.a, #b) p'), [0, 0, 1])
     assert.deepEqual(specificity('#x .y::before'), [1, 1, 1])
-    // html + body + ul are three type selectors.
-    assert.deepEqual(specificity('html.rtl-agents-on.rtl-agents-standalone body :is(ul, ol)'), [0, 2, 3])
+    assert.deepEqual(specificity('html.rtl-agents-on [data-rtl-agents-dir="rtl"] :is(ul, ol)'), [0, 2, 2])
   })
 
-  await test('every physical-fix selector outranks the host rule it overrides', () => {
-    // Antigravity's `[&>ol:not(.contains-task-list)]:!pl-4` compiles to
-    // `.<utility> > ol:not(.contains-task-list)`: specificity (0,2,1), !important.
-    // Both sides are !important, so specificity decides — and a selector list is
-    // only as strong as its weakest member, so each one must win on its own.
-    const section = physicalSection(buildCss(RTL))
-    const group = section.match(/([^{}]+)\{\s*padding-left: 0 !important/)?.[1] ?? ''
-    const selectors = splitTopLevel(group)
-    assert.ok(selectors.length >= 2, `expected panel + standalone selectors, got: ${group.trim()}`)
-    const host: Specificity = [0, 2, 1]
-    for (const sel of selectors) {
-      const ours = specificity(sel)
-      assert.ok(
-        compareSpecificity(ours, host) > 0,
-        `(${ours}) does not beat the host's (${host}) for "${sel.trim()}"`,
-      )
+  group('layout safety')
+
+  await test('code keeps LTR order in every mode, isolated from the sentence', () => {
+    for (const opts of [SMART, RTL, AUTO]) {
+      const css = buildCss(opts)
+      const guard = css.slice(css.indexOf('Isolation keeps'), css.indexOf('Alignment is pinned'))
+      for (const sel of ['pre', 'code', 'kbd', '.monaco-editor', '.katex', '.mermaid']) {
+        assert.ok(guard.includes(sel), `${sel} missing from the LTR guard`)
+      }
+      assert.match(guard, /direction: ltr !important;\s*unicode-bidi: isolate !important/)
     }
   })
 
-  await test('physical fixes are absent in auto mode, where lists stay LTR', () => {
-    const css = buildCss(AUTO)
-    assert.equal(physicalSection(css), '')
-    assert.doesNotMatch(css, /padding-inline-start/)
-    assert.doesNotMatch(css, /border-inline-start/)
+  await test('inline code is never force-aligned', () => {
+    const css = buildCss(SMART)
+    const alignment = css.slice(css.indexOf('Alignment is pinned'), css.indexOf('RTL-AGENTS-CSS-END'))
+    assert.match(alignment, /text-align: left !important/)
+    assert.doesNotMatch(alignment, /(?:^|[(,\s])code[),\s]/)
   })
 
-  await test('the physical section applies to the standalone agent window too', () => {
-    const section = physicalSection(buildCss(RTL))
-    assert.match(section, /html\.rtl-agents-on\.rtl-agents-standalone body :is\(ul, ol\)/)
-    assert.match(section, /html\.rtl-agents-on\.rtl-agents-standalone body blockquote/)
+  await test('the LTR guard follows the direction rules so it wins the cascade', () => {
+    const css = buildCss(SMART)
+    assert.ok(css.indexOf('Layout safety') > css.indexOf('Message direction'))
+  })
+
+  await test('tables are no longer pinned LTR', () => {
+    // A Persian table reads right to left; an English one inside a Persian
+    // reply is judged on its own by the runtime.
+    for (const opts of [SMART, RTL]) {
+      assert.doesNotMatch(buildCss(opts), /html\.rtl-agents-on table \{\s*direction: ltr/)
+    }
   })
 
   group('manifest')

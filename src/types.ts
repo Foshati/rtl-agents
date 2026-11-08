@@ -62,21 +62,24 @@ export interface RtlStatus {
 }
 
 /**
- * Base direction applied to rendered chat text.
+ * How rendered chat text picks its direction.
  *
- * `rtl` pins every message block to an RTL base, which is what a Persian,
- * Arabic or Hebrew conversation wants. `auto` restores the pre-2.1 behaviour of
- * letting each paragraph pick its own direction from its first strong character
- * — better only when the chat is mostly LTR with occasional RTL passages.
+ * - `smart` decides per message from the share of RTL letters in it, so a Persian
+ *   reply is RTL and an English one LTR, and tables are judged on their own.
+ * - `rtl` pins every message to an RTL base, whatever language it is in.
+ * - `auto` lets each paragraph pick its own direction from its first strong
+ *   character — the pre-2.1 behaviour, kept for anyone who relies on it.
  */
-export type BaseDirection = 'rtl' | 'auto'
+export type BaseDirection = 'smart' | 'rtl' | 'auto'
 
 /** Options that shape the generated CSS/JS assets */
 export interface ContentOptions {
   /** Extra container selectors supplied by the user */
   customSelectors: string[]
-  /** Base direction for rendered message text */
+  /** How rendered message text picks its direction */
   baseDirection: BaseDirection
+  /** Stamped into the assets so a running window can report what it loaded */
+  extensionVersion?: string
 }
 
 /** Options for a patch operation */
