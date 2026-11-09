@@ -130,8 +130,18 @@ const LTR_BLOCK_SELECTORS = [
   '.code-block-container',
 ]
 
-/** Left out of the letter count: code reads the same whatever prose surrounds it. */
+/**
+ * Left out of the letter count: code reads the same whatever prose surrounds it,
+ * and elements that hold no visible text at all. Antigravity puts an inline
+ * `<style>` — a few hundred Latin letters of CSS — inside every rendered
+ * message; counted, it turned each Persian reply LTR.
+ */
 const NON_PROSE_SELECTORS = [
+  'style',
+  'script',
+  'noscript',
+  'template',
+  'svg',
   'pre',
   'code',
   'kbd',
@@ -532,6 +542,7 @@ export function buildJs(options: ContentOptions): string {
           localStorage.setItem(STORAGE_KEY, on ? 'true' : 'false');
         }
         catch (e) { /* storage unavailable */ }
+        broadcast();
       }
       syncButton();
       syncEngine();
@@ -543,6 +554,54 @@ export function buildJs(options: ContentOptions): string {
         apply(e.newValue === 'true');
       }
     });
+
+    /* ------------------------------------------------------------------
+       Frame bridge
+
+       Antigravity IDE renders its chat in a cross-origin frame — a page from
+       the agent's local server, embedded in a webview — that workbench CSS
+       cannot reach. The main process injects this same script into it, and
+       postMessage through window.top keeps it in step with the workbench:
+       the frame asks for the state when it loads, the workbench answers and
+       pushes every change, and a toggle in the frame goes to the workbench,
+       which owns the path to the extension host.
+       ------------------------------------------------------------------ */
+
+    var CHANNEL = 'rtl-agents';
+    var IS_TOP = window.top === window;
+    var bridgeFrames = [];
+
+    function post(target, type) {
+      try {
+        target.postMessage({ channel: CHANNEL, type: type, active: current }, '*');
+        return true;
+      }
+      catch (e) {
+        return false;
+      }
+    }
+
+    function broadcast() {
+      if (!IS_TOP || !bridgeFrames) { return; }
+      bridgeFrames = bridgeFrames.filter(function (f) { return !f.closed && post(f, 'state'); });
+    }
+
+    window.addEventListener('message', function (e) {
+      var d = e.data;
+      if (!d || d.channel !== CHANNEL || !e.source) { return; }
+      if (IS_TOP) {
+        if (bridgeFrames.indexOf(e.source) === -1) { bridgeFrames.push(e.source); }
+        if (d.type === 'toggle') { onToggle(); }
+        else { post(e.source, 'state'); }
+      }
+      else if (e.source === window.top && d.type === 'state') {
+        apply(!!d.active);
+      }
+    });
+
+    if (!IS_TOP) {
+      post(window.top, 'hello');
+    }
 
     /* ------------------------------------------------------------------
        Status bar bridge
@@ -652,7 +711,12 @@ export function buildJs(options: ContentOptions): string {
       // Optimistic: flip immediately so the click feels instant...
       apply(!current);
 
-      // ...then let the extension host record the authoritative state.
+      // ...then let the extension host record the authoritative state. A frame
+      // has no status bar: the workbench above it holds that path.
+      if (!IS_TOP) {
+        post(window.top, 'toggle');
+        return;
+      }
       var el = statusEl || findStatusEl();
       if (el) {
         var target = el.querySelector('a, .statusbar-item-label') || el;
@@ -730,7 +794,7 @@ export function buildJs(options: ContentOptions): string {
           settled: settled.get(roots[i]) || null,
           direction: style.direction,
           textAlign: style.textAlign,
-          text: (roots[i].textContent || '').replace(/\\s+/g, ' ').slice(0, 48)
+          text: (roots[i].innerText || roots[i].textContent || '').replace(/\\s+/g, ' ').slice(0, 48)
         });
       }
       var probe = getComputedStyle(HTML).getPropertyValue('--rtl-agents-version').trim();

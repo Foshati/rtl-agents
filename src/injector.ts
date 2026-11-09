@@ -20,6 +20,7 @@ import {
   MANIFEST_FILENAME,
   stripInjected,
 } from './content'
+import { applyMainHook, mainHookCurrent, needsMainHook, removeMainHook } from './mainHook'
 import { exists, hashFile, hashText, isPermissionError } from './utils'
 
 function manifestPath(installation: IdeInstallation): string {
@@ -96,7 +97,7 @@ export async function isFullyInstalled(installation: IdeInstallation): Promise<b
   }
   const cssPath = path.join(installation.workbenchDir, CSS_FILENAME)
   const jsPath = path.join(installation.workbenchDir, JS_FILENAME)
-  return (await exists(cssPath)) && (await exists(jsPath))
+  return (await exists(cssPath)) && (await exists(jsPath)) && (await mainHookCurrent(installation))
 }
 
 /**
@@ -236,6 +237,17 @@ async function restoreChecksums(installation: IdeInstallation, messages: string[
 }
 
 /**
+ * Whether the CSS/JS assets on disk are exactly what these options generate.
+ */
+export async function assetsCurrent(installation: IdeInstallation, options: ContentOptions): Promise<boolean> {
+  const read = (name: string): Promise<string | undefined> =>
+    fs.readFile(path.join(installation.workbenchDir, name), 'utf-8').catch(() => undefined)
+  return (await read(CSS_FILENAME)) === buildCss(options)
+    && (await read(JS_FILENAME)) === buildJs(options)
+    && (await mainHookCurrent(installation))
+}
+
+/**
  * Write the CSS/JS assets. Returns true when anything on disk changed.
  */
 async function writeAssets(
@@ -351,6 +363,12 @@ export async function addRtl(installation: IdeInstallation, options: PatchOption
     }
     await fs.writeFile(manifestPath(installation), `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8')
 
+    if (await needsMainHook(installation)) {
+      if (await applyMainHook(installation, messages)) {
+        changed = true
+      }
+    }
+
     await removeChecksums(installation, messages)
   }
   catch (e: unknown) {
@@ -427,6 +445,18 @@ export async function removeRtl(installation: IdeInstallation): Promise<PatchRes
     }
   }
 
+  try {
+    if (await removeMainHook(installation, messages)) {
+      changed = true
+    }
+  }
+  catch (e: unknown) {
+    if (isPermissionError(e)) {
+      permissionError = true
+    }
+    messages.push(`  main.js: Restore failed: ${(e as Error).message}`)
+  }
+
   await restoreChecksums(installation, messages)
 
   for (const fileName of [CSS_FILENAME, JS_FILENAME, MANIFEST_FILENAME]) {
@@ -460,7 +490,10 @@ export async function reinjectAssets(
   }
 
   try {
-    const changed = await writeAssets(installation, options, messages)
+    let changed = await writeAssets(installation, options, messages)
+    if (await needsMainHook(installation)) {
+      changed = (await applyMainHook(installation, messages)) || changed
+    }
     await refreshManifestVersion(installation, options.extensionVersion, messages)
     return { messages, changed, permissionError: false }
   }

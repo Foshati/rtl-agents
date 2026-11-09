@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-11-09
+
+### Fixed
+- **Antigravity IDE: the chat is now reached.** Antigravity IDE does not render its agent chat in the workbench document. Its bundled `agy` extension opens a webview whose only content is an iframe onto the agent's local server (`http://127.0.0.1:<port>/c/<id>?extensionView=true`), and the page's files live inside the `agy` binary — so no stylesheet or script in the workbench HTML could ever touch the messages, the header button or the composer. That is why 2.3.0 (and earlier releases on this IDE) showed an `⇄ LTR` status item and nothing else. The patch now also prepends one failure-safe line to `out/main.js` — a dynamic `import()` with a `.catch` — that loads `rtl-agents-main.js`; Electron's main process waits for frames of the agent page and runs the same generated CSS and JS in them. It is added and removed with the rest of the patch, restored byte for byte on deactivation, re-applied after an IDE update, and only done for hosts that bundle `agy`.
+- **A Persian reply was judged LTR because of a stylesheet inside it.** Antigravity ships an inline `<style>` — a few hundred Latin letters of CSS — in every rendered message, and the letter count included it. `style`, `script`, `noscript`, `template` and `svg` are now left out of the count.
+- **The toggle works from the chat frame.** The frame has no status bar, so the runtime bridges to the workbench over `postMessage`: the frame asks for the state on load, the workbench answers and pushes every change, and a click in the frame goes to the workbench, which owns the path to the extension host. The header button, the status bar item and the stored state stay in step (verified in the live IDE).
+- **Stale assets were never replaced.** Asset refresh ran only when the version recorded in the extension's state changed, so assets written by another build stayed on disk for good, and a profile whose saved mode was missing was treated as inactive even though the patch was on disk. Every start now compares the assets and the `main.js` hook with what this version generates and rewrites them, then asks for a restart, only when they differ; a patch found on disk is adopted as active. A start with nothing stale writes nothing.
+- **Check Status reports whether the assets on disk are current.**
+
+### Testing
+- 55 tests, including the `main.js` hook round trip (untouched on hosts without `agy`, byte-exact restore, idempotence, re-hook after an IDE update), parsing the generated hook module, and the frame bridge.
+- Verified in a live Antigravity IDE 1.107.0 (Electron 39) over DevTools: both chat windows run 2.3.1 in `smart` mode, Persian replies are `rtl` with text at the right edge, and the toggle round trip between frame, workbench and status bar is consistent.
+
 ## [2.3.0] - 2026-11-09
 
 ### Added

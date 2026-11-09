@@ -13,6 +13,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import process from 'node:process'
+import * as vm from 'node:vm'
 
 import { countStrong, decideDirection, firstStrongDirection, isSettled } from '../src/bidi'
 import {
@@ -25,7 +26,9 @@ import {
   messageRootSelectors,
   stripInjected,
 } from '../src/content'
-import { addRtl, getStatus, isFullyInstalled, reinjectAssets, removeRtl } from '../src/injector'
+import { addRtl, assetsCurrent, getStatus, isFullyInstalled, reinjectAssets, removeRtl } from '../src/injector'
+import { buildMainHook, MAIN_HOOK_FILENAME, mainEntryPath } from '../src/mainHook'
+import { exists } from '../src/utils'
 import { PERSIAN_CORPUS } from './corpus'
 
 const FIXTURES = path.resolve(process.cwd(), 'test', 'fixtures')
@@ -635,6 +638,109 @@ async function main(): Promise<void> {
     const again = await reinjectAssets(fresh, { ...OPTIONS, extensionVersion: '2.1.1' })
     assert.ok(!again.messages.some(m => m.includes('Manifest')), again.messages.join(' | '))
     await fs.rm(fresh.appRoot, { recursive: true, force: true })
+  })
+
+  await test('assets written by another build are detected and replaced even when the manifest version matches', async () => {
+    // The 2.3.0 field report: the manifest already said 2.3.0, but the assets on
+    // disk were generated with other options, and nothing keyed on the version
+    // ever rewrote them.
+    const fresh = await makeInstallation({ 'workbench.html': base })
+    await addRtl(fresh, OPTIONS)
+    assert.ok(await assetsCurrent(fresh, OPTIONS))
+
+    await fs.writeFile(path.join(fresh.workbenchDir, CSS_FILENAME), buildCss(RTL), 'utf-8')
+    await fs.writeFile(path.join(fresh.workbenchDir, JS_FILENAME), buildJs(RTL), 'utf-8')
+    assert.equal(await assetsCurrent(fresh, OPTIONS), false)
+
+    const healed = await reinjectAssets(fresh, OPTIONS)
+    assert.equal(healed.changed, true)
+    assert.ok(await assetsCurrent(fresh, OPTIONS))
+    assert.match(await fs.readFile(path.join(fresh.workbenchDir, CSS_FILENAME), 'utf-8'), /--rtl-agents-mode: "smart"/)
+
+    // Nothing stale: a start writes nothing.
+    assert.equal((await reinjectAssets(fresh, OPTIONS)).changed, false)
+    await fs.rm(fresh.appRoot, { recursive: true, force: true })
+  })
+
+  group('agent frame hook (Antigravity IDE)')
+
+  const MAIN_ORIGINAL = '/*!---\n * Copyright (C) Microsoft Corporation.\n *---*/var a=1;export{a};\n'
+
+  async function makeAgyInstallation(): Promise<IdeInstallation> {
+    const agy = await makeInstallation({ 'workbench.html': base })
+    await fs.mkdir(path.join(agy.appRoot, 'extensions', 'agy'), { recursive: true })
+    await fs.writeFile(mainEntryPath(agy), MAIN_ORIGINAL, 'utf-8')
+    return agy
+  }
+
+  await test('hosts without the agy extension never get main.js touched', async () => {
+    const plain = await makeInstallation({ 'workbench.html': base })
+    await fs.writeFile(mainEntryPath(plain), MAIN_ORIGINAL, 'utf-8')
+    await addRtl(plain, OPTIONS)
+    assert.equal(await fs.readFile(mainEntryPath(plain), 'utf-8'), MAIN_ORIGINAL)
+    assert.equal(await exists(path.join(plain.workbenchDir, MAIN_HOOK_FILENAME)), false)
+    await fs.rm(plain.appRoot, { recursive: true, force: true })
+  })
+
+  await test('addRtl hooks main.js with one failure-safe dynamic import, and removeRtl restores it byte for byte', async () => {
+    const agy = await makeAgyInstallation()
+    const result = await addRtl(agy, OPTIONS)
+    assert.ok(result.changed)
+    const patched = await fs.readFile(mainEntryPath(agy), 'utf-8')
+    assert.equal(patched, `/* RTL-AGENTS-MAIN */import("./vs/workbench/rtl-agents-main.js").catch(function () {});\n${MAIN_ORIGINAL}`)
+    assert.ok(await exists(path.join(agy.workbenchDir, MAIN_HOOK_FILENAME)))
+    assert.ok(await isFullyInstalled(agy))
+    assert.ok(await assetsCurrent(agy, OPTIONS))
+
+    // Idempotent: a second run adds nothing.
+    assert.equal((await addRtl(agy, OPTIONS)).changed, false)
+    assert.equal(await fs.readFile(mainEntryPath(agy), 'utf-8'), patched)
+
+    await removeRtl(agy)
+    assert.equal(await fs.readFile(mainEntryPath(agy), 'utf-8'), MAIN_ORIGINAL)
+    assert.equal(await exists(path.join(agy.workbenchDir, MAIN_HOOK_FILENAME)), false)
+    await fs.rm(agy.appRoot, { recursive: true, force: true })
+  })
+
+  await test('an IDE update that replaces main.js is detected and re-hooked', async () => {
+    const agy = await makeAgyInstallation()
+    await addRtl(agy, OPTIONS)
+    await fs.writeFile(mainEntryPath(agy), MAIN_ORIGINAL, 'utf-8')
+    assert.equal(await isFullyInstalled(agy), false)
+    assert.equal(await assetsCurrent(agy, OPTIONS), false)
+    assert.ok((await reinjectAssets(agy, OPTIONS)).changed)
+    assert.ok(await isFullyInstalled(agy))
+    await fs.rm(agy.appRoot, { recursive: true, force: true })
+  })
+
+  await test('the hook module parses as ESM, targets only the loopback extension view, and survives missing assets', () => {
+    const hook = buildMainHook()
+    assert.match(hook, /import \{ app, webFrameMain \} from 'electron'/)
+    assert.match(hook, /extensionView'\) === 'true'/)
+    assert.match(hook, /'127\.0\.0\.1'/)
+    assert.match(hook, /return; \/\/ assets gone/)
+    assert.match(hook, /data-rtl-agents-frame/)
+    // Strip the imports and compile (without running) the rest.
+    const body = hook.replace(/^import .*$/gm, '').replace(/import\.meta\.url/g, '"file:///x/y.js"')
+    assert.doesNotThrow(() => new vm.Script(body))
+  })
+
+  await test('the runtime bridges a frame to the workbench over postMessage', () => {
+    const js = buildJs(SMART)
+    assert.match(js, /var IS_TOP = window\.top === window;/)
+    assert.match(js, /post\(window\.top, 'hello'\)/)
+    assert.match(js, /post\(window\.top, 'toggle'\)/)
+    assert.match(js, /e\.source === window\.top && d\.type === 'state'/)
+  })
+
+  await test('inline <style> and <script> text is left out of the letter count', () => {
+    const js = buildJs(SMART)
+    const nonProse = js.match(/var NON_PROSE_SELECTOR = ("[^"]*");/)
+    assert.ok(nonProse)
+    const selectors = (JSON.parse(nonProse[1]) as string).split(/,\s*/)
+    for (const s of ['style', 'script', 'svg', 'pre', 'code']) {
+      assert.ok(selectors.includes(s), `${s} missing from ${nonProse[1]}`)
+    }
   })
 
   console.log(`\n${passed} passed, ${failed} failed\n`)
