@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-11-09
+
+### Added
+- **The standalone Antigravity app is supported.** Antigravity ships two products: the IDE this extension runs in, and a separate Electron app whose whole window is the agent chat. The app has no extension host and no workbench HTML, so earlier releases could not reach it — but its window is the same chat page the IDE embeds, and the same runtime works in it. From the Antigravity IDE, the extension now patches the app's `app.asar`: the archive's entry point is pointed at a three-line loader appended to the archive, which loads RTL Agents' hook (failure-safe) and then the app's own entry point. Every original file stays byte for byte where it was. The hook and its assets live outside the app, in `~/Library/Application Support/Antigravity/rtl-agents/`, together with a copy of the original archive that removal puts back exactly.
+  - Applied, refreshed and removed together with the IDE patch (**Activate**, **Deactivate**, **Restart RTL**). A settings change or an extension update only rewrites the hook folder; after an app update replaces the archive, the next start of the IDE patches it again.
+  - macOS: a copy the user has never opened is left alone — changing a bundle Gatekeeper has not approved yet makes it open as "damaged" — with a message to open it once first. Verified live: an approved copy keeps opening after the patch. Only done from the Antigravity IDE, so Cursor or VS Code users who happen to have Antigravity installed are not touched. Only macOS has been verified; Windows and Linux install locations are best effort.
+  - The toggle sits in the app's title bar next to the **⋮** and **Open IDE** buttons, where the app keeps its own actions, instead of under the sidebar.
+  - The app has no status bar, and its address changes on every launch (the port is dynamic), so the choice is kept in the app's own storage and survives restarts. It starts on.
+  - Check Status lists the app, whether the hook is installed and whether its files are current.
+- **Safer matching of the agent page.** The main-process hook now recognises the chat by what the page is — an IDE extension view, or a window whose preload exposes the app's own `nativeStorage` and `electronNative` — instead of by its address alone, so a developer's own `localhost` app in an embedded browser is never touched.
+
+### Changed
+- The toggle is placed in the title bar whenever the host has one, and beside **New Conversation** otherwise.
+
+### Testing
+- 65 tests. New: reading and rewriting real-format asar archives (original data kept as a prefix, only the entry point moved), recognising only the standalone app, byte-exact restore with and without the backup, re-patching after an app update, leaving unapproved macOS copies alone, and running the generated hook against a fake Electron to prove it injects into the app window and the IDE chat frame and nowhere else.
+- Verified live in Antigravity 2.29.1 on macOS: the app opens with the patch, the runtime reports `2.4.0`, smart mode decides Persian messages `rtl`, the toggle sits in the title bar, and its state is saved to and read back from the app's storage.
+
 ## [2.3.1] - 2026-11-09
 
 ### Fixed

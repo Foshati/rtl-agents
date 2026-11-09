@@ -1,7 +1,17 @@
+import type { StandaloneApp } from './standalone'
 import type { BaseDirection, ContentOptions, PatchOptions, RtlMode } from './types'
 import * as vscode from 'vscode'
 import { findIdeInstallations } from './finder'
 import { addRtl, assetsCurrent, getStatus, isFullyInstalled, isInstalled, reinjectAssets, removeRtl } from './injector'
+import {
+  findStandaloneApps,
+  isStandalonePatched,
+  STANDALONE_PERMISSION_HINT,
+  STANDALONE_UNAPPROVED_HINT,
+  standaloneCurrent,
+  syncStandalone,
+  unsyncStandalone,
+} from './standalone'
 import { createStatusBarItem, disposeStatusBar, updateStatusBar } from './statusBar'
 
 const STATE_MODE_KEY = 'rtl-agents.mode'
@@ -19,6 +29,19 @@ function getOutputChannel(): vscode.OutputChannel {
     outputChannel = vscode.window.createOutputChannel('RTL Agents')
   }
   return outputChannel
+}
+
+/**
+ * Messages are collected into arrays by the patch code; this array writes each
+ * one straight to the output channel as it is pushed.
+ */
+function channelWriter(channel: vscode.OutputChannel): string[] {
+  const lines: string[] = []
+  lines.push = (...items: string[]) => {
+    items.forEach(line => channel.appendLine(line))
+    return items.length
+  }
+  return lines
 }
 
 function getContentOptions(): ContentOptions {
@@ -42,6 +65,16 @@ async function saveMode(mode: RtlMode): Promise<void> {
 
 function getSavedMode(): RtlMode {
   return globalState.get<RtlMode>(STATE_MODE_KEY, 'inactive')
+}
+
+/**
+ * The standalone Antigravity app, when this is the Antigravity IDE.
+ *
+ * The two ship together and users run both, but a Cursor or VS Code user who
+ * happens to have Antigravity installed never asked for it to be modified.
+ */
+async function standaloneTargets(): Promise<StandaloneApp[]> {
+  return /antigravity/i.test(vscode.env.appName) ? findStandaloneApps() : []
 }
 
 /**
@@ -73,15 +106,25 @@ async function showPermissionError(workbenchPath: string): Promise<void> {
 }
 
 /**
- * Ask to restart the editor to load workbench modifications.
+ * Ask to restart whatever was patched so it loads the change.
  */
-async function promptRestartIfChanged(changed: boolean): Promise<void> {
-  if (!changed) {
+async function promptRestartIfChanged(changed: boolean, standaloneChanged = false): Promise<void> {
+  if (!changed && !standaloneChanged) {
     return
   }
   await updateStatusBar(globalLayoutActive)
+
+  if (!changed) {
+    vscode.window.showInformationMessage(
+      'RTL Agents: Patch applied to the Antigravity app. Fully quit and reopen it to load it.',
+    )
+    return
+  }
+
   const action = await vscode.window.showInformationMessage(
-    'RTL Agents: Patch applied. Fully quit and reopen the IDE to load it (a window reload is not enough).',
+    standaloneChanged
+      ? 'RTL Agents: Patch applied. Fully quit and reopen the IDE and the Antigravity app to load it (a window reload is not enough).'
+      : 'RTL Agents: Patch applied. Fully quit and reopen the IDE to load it (a window reload is not enough).',
     'Restart Now',
     'Later',
   )
@@ -104,6 +147,7 @@ async function handleAdd(): Promise<void> {
   const options = getPatchOptions()
   let anyChanged = false
   let anyPermissionError = false
+  let standaloneChanged = false
 
   for (const inst of installations) {
     channel.appendLine(`[${inst.ideName}] ${inst.targets.length} workbench document(s)`)
@@ -118,6 +162,20 @@ async function handleAdd(): Promise<void> {
     }
   }
 
+  const standalone = await standaloneTargets()
+  if (standalone.length > 0) {
+    channel.appendLine('[Antigravity app]')
+    const synced = await syncStandalone(standalone, options, channelWriter(channel))
+    channel.appendLine('')
+    if (synced.permissionError) {
+      vscode.window.showWarningMessage(`RTL Agents: ${STANDALONE_PERMISSION_HINT}`)
+    }
+    if (synced.blocked) {
+      vscode.window.showWarningMessage(STANDALONE_UNAPPROVED_HINT)
+    }
+    standaloneChanged = synced.changed
+  }
+
   channel.show(true)
   await saveMode('active')
 
@@ -126,8 +184,8 @@ async function handleAdd(): Promise<void> {
     return
   }
 
-  await promptRestartIfChanged(anyChanged)
-  if (!anyChanged) {
+  await promptRestartIfChanged(anyChanged, standaloneChanged)
+  if (!anyChanged && !standaloneChanged) {
     vscode.window.showInformationMessage('RTL Agents is already active.')
   }
 }
@@ -157,6 +215,17 @@ async function handleRemove(): Promise<void> {
     if (result.permissionError) {
       anyPermissionError = true
     }
+  }
+
+  const standalone = await standaloneTargets()
+  if (standalone.length > 0) {
+    channel.appendLine('[Antigravity app]')
+    const unsynced = await unsyncStandalone(standalone, channelWriter(channel))
+    channel.appendLine('')
+    if (unsynced.permissionError) {
+      vscode.window.showWarningMessage(`RTL Agents: ${STANDALONE_PERMISSION_HINT}`)
+    }
+    anyChanged = anyChanged || unsynced.changed
   }
 
   channel.show(true)
@@ -213,6 +282,22 @@ async function handleStatus(): Promise<void> {
     channel.appendLine('')
   }
 
+  const standalone = await standaloneTargets()
+  if (standalone.length > 0) {
+    channel.appendLine('Antigravity app:\n')
+    for (const app of standalone) {
+      const patched = await isStandalonePatched(app)
+      channel.appendLine(`  [${app.name}]`)
+      channel.appendLine(`    Hook:          ${patched ? 'installed' : 'not installed'}`)
+      if (patched) {
+        const current = await standaloneCurrent(app, getPatchOptions())
+        channel.appendLine(`    Files:         ${current ? 'current' : 'STALE — run "RTL Agents: Restart RTL", then fully quit and reopen the app'}`)
+      }
+      channel.appendLine(`    Hook folder:   ${app.dataDir}`)
+      channel.appendLine('')
+    }
+  }
+
   channel.show(true)
   await updateStatusBar(globalLayoutActive)
 }
@@ -250,6 +335,9 @@ async function handleRestart(): Promise<void> {
   let anyChanged = false
   let anyPermissionError = false
 
+  const standalone = await standaloneTargets()
+  let standaloneChanged = false
+
   channel.appendLine('--- 1. Restoring original files ---')
   for (const inst of installations) {
     const result = await removeRtl(inst)
@@ -257,6 +345,10 @@ async function handleRestart(): Promise<void> {
     if (result.changed) {
       anyChanged = true
     }
+  }
+  if (standalone.length > 0) {
+    channel.appendLine('[Antigravity app]')
+    await unsyncStandalone(standalone, channelWriter(channel))
   }
 
   channel.appendLine('\n--- 2. Re-applying patch ---')
@@ -270,6 +362,17 @@ async function handleRestart(): Promise<void> {
       anyPermissionError = true
     }
   }
+  if (standalone.length > 0) {
+    channel.appendLine('[Antigravity app]')
+    const synced = await syncStandalone(standalone, options, channelWriter(channel))
+    standaloneChanged = synced.changed
+    if (synced.permissionError) {
+      vscode.window.showWarningMessage(`RTL Agents: ${STANDALONE_PERMISSION_HINT}`)
+    }
+    if (synced.blocked) {
+      vscode.window.showWarningMessage(STANDALONE_UNAPPROVED_HINT)
+    }
+  }
 
   channel.show(true)
   await saveMode('active')
@@ -278,12 +381,37 @@ async function handleRestart(): Promise<void> {
     await showPermissionError(installations[0].workbenchHtmlPath)
   }
   else {
-    await promptRestartIfChanged(anyChanged)
+    await promptRestartIfChanged(anyChanged, standaloneChanged)
   }
 }
 
 async function saveVersion(): Promise<void> {
   await globalState.update(STATE_VERSION_KEY, currentVersion)
+}
+
+/**
+ * Bring the standalone app in line with this build, quietly.
+ * Returns whether anything on disk changed.
+ */
+async function silentStandalone(): Promise<boolean> {
+  const apps = await standaloneTargets()
+  if (apps.length === 0) {
+    return false
+  }
+  const options = getPatchOptions()
+  const pending: StandaloneApp[] = []
+  for (const app of apps) {
+    if (!(await standaloneCurrent(app, options))) {
+      pending.push(app)
+    }
+  }
+  if (pending.length === 0) {
+    return false
+  }
+  const messages: string[] = []
+  const result = await syncStandalone(pending, options, messages)
+  messages.forEach(m => getOutputChannel().appendLine(m))
+  return result.changed
 }
 
 async function silentPatch(onlyWhenIncomplete: boolean): Promise<boolean> {
@@ -352,6 +480,11 @@ async function autoReactivate(): Promise<void> {
         patchedOnDisk = true
       }
     }
+    for (const app of await standaloneTargets()) {
+      if (await isStandalonePatched(app)) {
+        patchedOnDisk = true
+      }
+    }
     if (!patchedOnDisk) {
       if (savedVersion !== currentVersion) {
         await saveVersion()
@@ -371,7 +504,8 @@ async function autoReactivate(): Promise<void> {
   // version alone is not enough — the stored version can already match while the
   // assets on disk came from another build, and then nothing would ever fix them.
   // Assets are compared by content, so a start with nothing stale writes nothing.
-  await promptRestartIfChanged(await silentPatch(true))
+  const ideChanged = await silentPatch(true)
+  await promptRestartIfChanged(ideChanged, await silentStandalone())
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -403,6 +537,7 @@ export function activate(context: vscode.ExtensionContext): void {
       for (const inst of installations) {
         await reinjectAssets(inst, options)
       }
+      await silentStandalone()
     }),
   )
 
