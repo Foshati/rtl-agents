@@ -7,14 +7,18 @@
  *   pnpm test
  */
 
+import type { StandaloneApp } from '../src/standalone'
 import type { IdeInstallation, WorkbenchTarget } from '../src/types'
 import * as assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
+import * as crypto from 'node:crypto'
+import * as nodeFs from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import process from 'node:process'
-import * as vm from 'node:vm'
 
+import * as vm from 'node:vm'
 import { countStrong, decideDirection, firstStrongDirection, isSettled } from '../src/bidi'
 import {
   buildCss,
@@ -28,6 +32,18 @@ import {
 } from '../src/content'
 import { addRtl, assetsCurrent, getStatus, isFullyInstalled, reinjectAssets, removeRtl } from '../src/injector'
 import { buildMainHook, MAIN_HOOK_FILENAME, mainEntryPath } from '../src/mainHook'
+import {
+  applyStandalone,
+  buildLoader,
+  findStandaloneApps,
+  isStandalonePatched,
+  quarantineUnopened,
+  readAsarFile,
+  removeStandalone,
+  STANDALONE_HOOK_FILENAME,
+  standaloneCurrent,
+  syncStandalone,
+} from '../src/standalone'
 import { exists } from '../src/utils'
 import { PERSIAN_CORPUS } from './corpus'
 
@@ -713,10 +729,10 @@ async function main(): Promise<void> {
     await fs.rm(agy.appRoot, { recursive: true, force: true })
   })
 
-  await test('the hook module parses as ESM, targets only the loopback extension view, and survives missing assets', () => {
+  await test('the hook module parses as ESM, targets only loopback pages that identify as the agent, and survives missing assets', () => {
     const hook = buildMainHook()
     assert.match(hook, /import \{ app, webFrameMain \} from 'electron'/)
-    assert.match(hook, /extensionView'\) === 'true'/)
+    assert.match(hook, /extensionView=true/)
     assert.match(hook, /'127\.0\.0\.1'/)
     assert.match(hook, /return; \/\/ assets gone/)
     assert.match(hook, /data-rtl-agents-frame/)
@@ -741,6 +757,288 @@ async function main(): Promise<void> {
     for (const s of ['style', 'script', 'svg', 'pre', 'code']) {
       assert.ok(selectors.includes(s), `${s} missing from ${nonProse[1]}`)
     }
+  })
+
+  group('standalone Antigravity app')
+
+  /** A real-format asar archive, built in memory. */
+  function makeAsar(files: Record<string, string>): Buffer {
+    interface Node { files: Record<string, Node | { size: number, offset: string }> }
+    const tree: Node = { files: {} }
+    const chunks: Buffer[] = []
+    let offset = 0
+    for (const [file, content] of Object.entries(files)) {
+      const parts = file.split('/')
+      let node = tree
+      for (const part of parts.slice(0, -1)) {
+        node = (node.files[part] ??= { files: {} }) as Node
+      }
+      const data = Buffer.from(content)
+      node.files[parts[parts.length - 1]] = { size: data.length, offset: String(offset) }
+      chunks.push(data)
+      offset += data.length
+    }
+    const json = Buffer.from(JSON.stringify(tree))
+    const padded = Buffer.concat([json, Buffer.alloc((4 - (json.length % 4)) % 4)])
+    const head = Buffer.alloc(16)
+    head.writeUInt32LE(4, 0)
+    head.writeUInt32LE(padded.length + 8, 4)
+    head.writeUInt32LE(padded.length + 4, 8)
+    head.writeUInt32LE(json.length, 12)
+    return Buffer.concat([head, padded, ...chunks])
+  }
+
+  const RTL_OPTIONS = { ...RTL, extensionVersion: '2.3.0' }
+  const APP_PACKAGE = JSON.stringify({ name: 'antigravity', productName: 'Antigravity', version: '2.29.1', main: 'dist/main.js' })
+
+  async function makeStandalone(pkg = APP_PACKAGE): Promise<{ root: string, resources: string }> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rtl-agents-app-'))
+    const resources = path.join(root, 'Antigravity.app', 'Contents', 'Resources')
+    await fs.mkdir(resources, { recursive: true })
+    await fs.writeFile(path.join(resources, 'app.asar'), makeAsar({ 'package.json': pkg, 'dist/main.js': '"use strict";' }))
+    return { root, resources }
+  }
+
+  const sha = async (file: string): Promise<string> =>
+    crypto.createHash('sha256').update(await fs.readFile(file)).digest('hex')
+
+  async function appOf(app: { root: string, resources: string }): Promise<StandaloneApp> {
+    const [found] = await findStandaloneApps([app.resources], path.join(app.root, 'userData', 'rtl-agents'))
+    return found
+  }
+
+  await test('files are read out of an asar archive, nested paths included', async () => {
+    const app = await makeStandalone()
+    const asar = path.join(app.resources, 'app.asar')
+    assert.equal((await readAsarFile(asar, 'dist/main.js'))?.toString(), '"use strict";')
+    assert.equal(JSON.parse((await readAsarFile(asar, 'package.json'))!.toString()).version, '2.29.1')
+    assert.equal(await readAsarFile(asar, 'dist/missing.js'), undefined)
+    assert.equal(await readAsarFile(path.join(app.resources, 'nope.asar'), 'package.json'), undefined)
+    await fs.rm(app.root, { recursive: true, force: true })
+  })
+
+  await test('only the standalone app is recognised — not the IDE, not other Electron apps', async () => {
+    const app = await makeStandalone()
+    const other = await makeStandalone(JSON.stringify({ name: 'some-other-app', main: 'index.js' }))
+    const empty = await fs.mkdtemp(path.join(os.tmpdir(), 'rtl-agents-app-'))
+    const found = await findStandaloneApps([app.resources, other.resources, empty, path.join(empty, 'missing')], '/x')
+    assert.equal(found.length, 1)
+    assert.equal(found[0].name, 'Antigravity')
+    assert.equal(found[0].asarPath, path.join(app.resources, 'app.asar'))
+    for (const dir of [app.root, other.root, empty]) {
+      await fs.rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  await test('the archive starts a loader that runs RTL Agents first and then the app, with every original file intact', async () => {
+    const app = await makeStandalone()
+    const target = await appOf(app)
+    const original = await fs.readFile(target.asarPath)
+
+    assert.equal(await applyStandalone(target, OPTIONS, []), true)
+    assert.ok(await isStandalonePatched(target))
+    assert.ok(await standaloneCurrent(target, OPTIONS))
+
+    // The app's files read back unchanged; only package.json's entry point moved.
+    assert.equal((await readAsarFile(target.asarPath, 'dist/main.js'))?.toString(), '"use strict";')
+    const pkg = JSON.parse((await readAsarFile(target.asarPath, 'package.json'))!.toString())
+    assert.deepEqual(pkg, { ...JSON.parse(APP_PACKAGE), main: 'rtl-agents/index.js' })
+
+    const loader = (await readAsarFile(target.asarPath, 'rtl-agents/index.js'))!.toString()
+    assert.equal(loader, buildLoader(path.join(target.dataDir, STANDALONE_HOOK_FILENAME), 'dist/main.js'))
+    assert.match(loader, /try \{ require\(".*rtl-agents-main\.cjs"\); \} catch/)
+    assert.match(loader, /require\("\.\.\/dist\/main\.js"\);/)
+    assert.doesNotThrow(() => new vm.Script(loader))
+
+    // The original data is a prefix of the new data section: nothing moved.
+    const patched = await fs.readFile(target.asarPath)
+    const dataOf = (b: Buffer): Buffer => b.subarray(8 + b.readUInt32LE(4))
+    assert.ok(dataOf(patched).subarray(0, dataOf(original).length).equals(dataOf(original)))
+
+    // Hook, assets and backup live outside the app.
+    for (const name of [STANDALONE_HOOK_FILENAME, CSS_FILENAME, JS_FILENAME, 'app.asar.original']) {
+      assert.ok(await exists(path.join(target.dataDir, name)), name)
+    }
+    assert.ok((await fs.readFile(path.join(target.dataDir, 'app.asar.original'))).equals(original))
+
+    // Nothing stale: a second pass writes nothing.
+    assert.equal(await applyStandalone(target, OPTIONS, []), false)
+    await fs.rm(app.root, { recursive: true, force: true })
+  })
+
+  await test('a settings change rewrites only the hook folder; an app update is re-patched', async () => {
+    const app = await makeStandalone()
+    const target = await appOf(app)
+    await applyStandalone(target, OPTIONS, [])
+    const patchedOnce = await sha(target.asarPath)
+
+    assert.equal(await standaloneCurrent(target, RTL_OPTIONS), false)
+    assert.equal(await applyStandalone(target, RTL_OPTIONS, []), true)
+    assert.ok(await standaloneCurrent(target, RTL_OPTIONS))
+    assert.equal(await sha(target.asarPath), patchedOnce)
+
+    // The app updates: a fresh, unpatched archive appears.
+    const updated = makeAsar({
+      'package.json': JSON.stringify({ name: 'antigravity', productName: 'Antigravity', version: '2.30.0', main: 'dist/main.js' }),
+      'dist/main.js': '"use strict"; /* 2.30 */',
+    })
+    await fs.writeFile(target.asarPath, updated)
+    assert.equal(await isStandalonePatched(target), false)
+    assert.equal(await standaloneCurrent(target, RTL_OPTIONS), false)
+    assert.equal(await applyStandalone(target, RTL_OPTIONS, []), true)
+    assert.equal(JSON.parse((await readAsarFile(target.asarPath, 'package.json'))!.toString()).version, '2.30.0')
+    assert.ok((await fs.readFile(path.join(target.dataDir, 'app.asar.original'))).equals(updated))
+    await fs.rm(app.root, { recursive: true, force: true })
+  })
+
+  await test('removal restores the original archive byte for byte, with or without the backup', async () => {
+    for (const keepBackup of [true, false]) {
+      const app = await makeStandalone()
+      const target = await appOf(app)
+      const before = await sha(target.asarPath)
+      await applyStandalone(target, OPTIONS, [])
+      if (!keepBackup) {
+        await fs.rm(path.join(target.dataDir, 'app.asar.original'))
+      }
+      assert.equal(await removeStandalone(target, []), true)
+      assert.equal(await sha(target.asarPath), before, keepBackup ? 'from backup' : 'rebuilt')
+      assert.equal(await exists(target.dataDir), false)
+      assert.equal(await isStandalonePatched(target), false)
+      assert.equal(await removeStandalone(target, []), false)
+      await fs.rm(app.root, { recursive: true, force: true })
+    }
+  })
+
+  await test('the app/ folder left by the first 2.4.0 builds is cleaned up, and a foreign one is not', async () => {
+    const app = await makeStandalone()
+    const target = await appOf(app)
+    const legacy = path.join(app.resources, 'app')
+    await fs.mkdir(legacy)
+    await fs.writeFile(path.join(legacy, 'package.json'), '{"rtlAgents":{}}', 'utf-8')
+    await applyStandalone(target, OPTIONS, [])
+    assert.equal(await exists(legacy), false)
+
+    await fs.mkdir(legacy)
+    await fs.writeFile(path.join(legacy, 'package.json'), '{"name":"somebody-elses"}', 'utf-8')
+    await removeStandalone(target, [])
+    assert.ok(await exists(path.join(legacy, 'package.json')))
+    await fs.rm(app.root, { recursive: true, force: true })
+  })
+
+  await test('an app macOS has not approved yet is left alone, and an approved one is patched', async () => {
+    assert.equal(quarantineUnopened(undefined), false)
+    assert.equal(quarantineUnopened('0081;6af1a50a;Chrome;UUID'), true)
+    assert.equal(quarantineUnopened('0381;6af1a50a;Chrome;UUID'), true)
+    assert.equal(quarantineUnopened('0083;6af1a50a;Chrome;UUID'), false)
+    assert.equal(quarantineUnopened('0383;6af1a50a;Chrome;UUID'), false)
+    assert.equal(quarantineUnopened('garbage'), false)
+
+    const app = await makeStandalone()
+    const target = await appOf(app)
+    const before = await sha(target.asarPath)
+
+    const messages: string[] = []
+    const blocked = await syncStandalone([target], OPTIONS, messages, async () => '0381;6af1a50a;Chrome;UUID')
+    assert.deepEqual({ changed: blocked.changed, blocked: blocked.blocked }, { changed: false, blocked: true })
+    assert.equal(await sha(target.asarPath), before)
+    assert.match(messages.join('\n'), /Skipped/)
+
+    const approved = await syncStandalone([target], OPTIONS, [], async () => '0383;6af1a50a;Chrome;UUID')
+    assert.equal(approved.changed, true)
+    assert.ok(await isStandalonePatched(target))
+
+    // A patch that is already there keeps being maintained whatever the flag says.
+    const refreshed = await syncStandalone([target], RTL_OPTIONS, [], async () => '0381;6af1a50a;Chrome;UUID')
+    assert.equal(refreshed.changed, true)
+    assert.ok(await standaloneCurrent(target, RTL_OPTIONS))
+    await fs.rm(app.root, { recursive: true, force: true })
+  })
+
+  /** Run the standalone hook against a fake Electron and fake pages. */
+  async function runHook(): Promise<{ inject: (url: string, page: Record<string, unknown>) => { ran: boolean, marked: boolean } }> {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'rtl-agents-hook-'))
+    await fs.writeFile(path.join(dir, CSS_FILENAME), '.x{}', 'utf-8')
+    await fs.writeFile(path.join(dir, JS_FILENAME), 'window.__ran = true;', 'utf-8')
+
+    type Listener = (...args: unknown[]) => void
+    const listeners: Record<string, Listener> = {}
+    const frames = new Map<string, { url: string, isDestroyed: () => boolean, executeJavaScript: (code: string) => Promise<void> }>()
+    const contents = {
+      on: (name: string, cb: Listener): void => {
+        listeners[name] = cb
+      },
+    }
+    const electron = {
+      app: { on: (_event: string, fn: Listener): void => { fn(null, contents) } },
+      webFrameMain: { fromId: (processId: number, routingId: number) => frames.get(`${processId}:${routingId}`) },
+    }
+    const modules: Record<string, unknown> = { 'electron': electron, 'node:fs': nodeFs, 'node:path': path }
+    const wrapped = `(function (require, __dirname) {${buildMainHook('cjs')}\n})`
+    const load = new vm.Script(wrapped).runInThisContext() as (r: unknown, d: string) => void
+    load((id: string) => modules[id], dir)
+
+    return {
+      inject(url, page) {
+        const marks = new Set<string>()
+        const window: Record<string, unknown> = { ...page }
+        const sandbox = {
+          window,
+          location: { search: new URL(url).search },
+          document: {
+            documentElement: { hasAttribute: (n: string) => marks.has(n), setAttribute: (n: string) => marks.add(n) },
+            head: { appendChild: () => {} },
+            createElement: () => ({}),
+          },
+        }
+        let code = ''
+        const run = (c: string): Promise<void> => {
+          code = c
+          return Promise.resolve()
+        }
+        frames.set('1:1', { url, isDestroyed: () => false, executeJavaScript: run })
+        listeners['did-frame-navigate']?.(null, url, 200, 'OK', true, 1, 1)
+        if (code) {
+          vm.createContext(sandbox)
+          vm.runInContext(code, sandbox)
+        }
+        return { ran: window.__ran === true, marked: marks.has('data-rtl-agents-frame') }
+      },
+    }
+  }
+
+  await test('the hook injects into the app window and the IDE chat frame, and nowhere else', async () => {
+    const hook = await runHook()
+    const app = { nativeStorage: {}, electronNative: {} }
+
+    // Standalone app: loopback page whose preload exposes the app's own APIs.
+    assert.deepEqual(hook.inject('https://127.0.0.1:57526/c/abc?project=1', app), { ran: true, marked: true })
+    // IDE: loopback page opened as an extension view.
+    assert.deepEqual(hook.inject('http://127.0.0.1:55863/c/abc?extensionView=true&x=1', {}), { ran: true, marked: true })
+    // A developer's own app on localhost, shown in an embedded browser.
+    assert.deepEqual(hook.inject('http://localhost:3000/', {}), { ran: false, marked: false })
+    // A remote site never reaches the page at all.
+    assert.deepEqual(hook.inject('https://example.com/?extensionView=true', app), { ran: false, marked: false })
+    // The agent flag must be exact, not a substring.
+    assert.deepEqual(hook.inject('http://127.0.0.1:1/?notextensionView=true', {}), { ran: false, marked: false })
+  })
+
+  await test('the standalone hook module is CommonJS and parses', () => {
+    const hook = buildMainHook('cjs')
+    assert.match(hook, /const \{ app, webFrameMain \} = require\('electron'\)/)
+    assert.match(hook, /const DIR = __dirname;/)
+    assert.doesNotMatch(hook, /import\.meta|^import /m)
+    assert.doesNotThrow(() => new vm.Script(`(function (require, __dirname) {${hook}\n})`))
+  })
+
+  await test('the runtime puts the toggle in the title bar, and keeps the choice in the app storage', () => {
+    const js = buildJs(SMART)
+    assert.doesNotThrow(() => new vm.Script(js))
+    assert.match(js, /\[data-testid="pane-titlebar-toolbar"\] \[data-testid="titlebar-more-actions"\]/)
+    assert.match(js, /anchor\.parentNode\.insertBefore\(btn, bar \? anchor : anchor\.nextSibling\)/)
+    assert.match(js, /window\.nativeStorage && window\.electronNative/)
+    assert.match(js, /var HUB_KEY = "rtl-agents\.active"/)
+    // Off by default only where there is a status bar to say otherwise.
+    assert.match(js, /hubStore \? readStored\(\) !== 'false' : readStored\(\) === 'true'/)
   })
 
   console.log(`\n${passed} passed, ${failed} failed\n`)

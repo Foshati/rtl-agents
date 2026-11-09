@@ -22,6 +22,9 @@ export const TOGGLE_GLYPH = '⇄'
 /** localStorage key shared by every patched document (same origin) */
 export const STORAGE_KEY = 'rtl-agents-active-state'
 
+/** Key under which the standalone Antigravity app's own storage keeps the choice */
+export const HUB_STORAGE_KEY = 'rtl-agents.active'
+
 /**
  * Chat panels, used only as a scope prefix — never flipped wholesale.
  *
@@ -365,6 +368,7 @@ export function buildJs(options: ContentOptions): string {
     var STANDALONE_CLASS = 'rtl-agents-standalone';
     var ACTIVE_CLASS = 'rtl-agents-active';
     var STORAGE_KEY = ${JSON.stringify(STORAGE_KEY)};
+    var HUB_KEY = ${JSON.stringify(HUB_STORAGE_KEY)};
     var DIR_ATTR = ${JSON.stringify(DIR_ATTR)};
     var ROOT_SELECTOR = ${JSON.stringify(list(messageRootSelectors(options)))};
     var NON_PROSE_SELECTOR = ${JSON.stringify(list(NON_PROSE_SELECTORS))};
@@ -395,7 +399,20 @@ export function buildJs(options: ContentOptions): string {
       }
     }
 
-    var current = readStored() === 'true';
+    // The standalone Antigravity app has no extension host and no status bar, and
+    // its page origin changes with every launch (the port is dynamic), so
+    // localStorage cannot carry the choice from one run to the next. The app's own
+    // storage, exposed to the page, can. A window that has never been told
+    // anything starts on: installing the patch is the request.
+    var hubStore = null;
+    try {
+      if (window.nativeStorage && window.electronNative && typeof window.nativeStorage.getItems === 'function') {
+        hubStore = window.nativeStorage;
+      }
+    }
+    catch (e) { /* not the standalone app */ }
+
+    var current = hubStore ? readStored() !== 'false' : readStored() === 'true';
     if (current) {
       HTML.classList.add(ON_CLASS);
     }
@@ -542,10 +559,43 @@ export function buildJs(options: ContentOptions): string {
           localStorage.setItem(STORAGE_KEY, on ? 'true' : 'false');
         }
         catch (e) { /* storage unavailable */ }
+        saveHub(on);
         broadcast();
       }
       syncButton();
       syncEngine();
+    }
+
+    function saveHub(on) {
+      if (!hubStore || typeof hubStore.updateItems !== 'function') { return; }
+      try {
+        var change = {};
+        change[HUB_KEY] = on ? 'true' : 'false';
+        var pending = hubStore.updateItems(change);
+        if (pending && pending.catch) { pending.catch(function () {}); }
+      }
+      catch (e) { /* storage unavailable */ }
+    }
+
+    // Adopt the saved choice, and follow changes made from another window.
+    function watchHub() {
+      if (!hubStore) { return; }
+      try {
+        var loaded = hubStore.getItems();
+        if (loaded && loaded.then) {
+          loaded.then(function (items) {
+            var saved = items && items[HUB_KEY];
+            if (saved === 'true' || saved === 'false') { apply(saved === 'true'); }
+          }).catch(function () {});
+        }
+        if (typeof hubStore.onChanged === 'function') {
+          hubStore.onChanged(function (changes) {
+            var saved = changes && changes[HUB_KEY];
+            if (saved === 'true' || saved === 'false') { apply(saved === 'true'); }
+          });
+        }
+      }
+      catch (e) { /* storage unavailable */ }
     }
 
     // Keeps the main window and the standalone agent window in lockstep.
@@ -702,6 +752,24 @@ export function buildJs(options: ContentOptions): string {
       return null;
     }
 
+    // The standalone Antigravity app keeps its actions in a title bar at the top
+    // of the page: "⋮", "Open IDE" and the pane buttons. The toggle belongs
+    // there, with them, rather than under the sidebar.
+    var BAR_ANCHORS = [
+      '[data-testid="pane-titlebar-toolbar"] [data-testid="titlebar-more-actions"]',
+      '[data-testid="pane-titlebar-toolbar"] [data-testid="open-editor-single"]'
+    ];
+
+    function findBarAnchor() {
+      for (var i = 0; i < BAR_ANCHORS.length; i++) {
+        var candidates = DOC.querySelectorAll(BAR_ANCHORS[i]);
+        for (var j = 0; j < candidates.length; j++) {
+          if (isVisible(candidates[j])) { return candidates[j]; }
+        }
+      }
+      return null;
+    }
+
     function onToggle(e) {
       if (e) {
         e.preventDefault();
@@ -724,14 +792,16 @@ export function buildJs(options: ContentOptions): string {
       }
     }
 
-    function createButton(anchor) {
+    function createButton(anchor, inBar) {
       var btn = DOC.createElement('div');
       btn.id = BTN_ID;
       btn.setAttribute('role', 'button');
       btn.setAttribute('tabindex', '0');
       btn.setAttribute('aria-label', 'Toggle RTL / LTR');
+      btn.setAttribute('data-place', inBar ? 'bar' : 'side');
       btn.title = 'Toggle RTL / LTR (RTL Agents)';
       btn.textContent = GLYPH;
+      if (inBar) { btn.setAttribute('data-no-drag', ''); }
 
       // Borrow the sibling's styling so the button looks native.
       var cls = typeof anchor.className === 'string' ? anchor.className : '';
@@ -758,13 +828,25 @@ export function buildJs(options: ContentOptions): string {
 
     function ensureButton() {
       var btn = DOC.getElementById(BTN_ID);
-      if (isVisible(btn)) { return; }
+      var bar = findBarAnchor();
 
-      var anchor = findAnchor();
+      // Settled: visible, and in the title bar whenever the host has one.
+      if (isVisible(btn) && (!bar || btn.getAttribute('data-place') === 'bar')) { return; }
+
+      var anchor = bar || findAnchor();
       if (!anchor || !anchor.parentNode) { return; }
 
-      if (!btn) { btn = createButton(anchor); }
-      anchor.parentNode.insertBefore(btn, anchor.nextSibling);
+      // The look is borrowed from the anchor, so a button that has to move to a
+      // different kind of anchor is rebuilt rather than restyled.
+      if (btn && btn.getAttribute('data-place') !== (bar ? 'bar' : 'side')) {
+        if (btn.parentNode) { btn.parentNode.removeChild(btn); }
+        btn = null;
+      }
+      if (!btn) { btn = createButton(anchor, !!bar); }
+
+      // In the title bar the button leads the cluster; beside the sidebar's
+      // "New Conversation" it follows that button.
+      anchor.parentNode.insertBefore(btn, bar ? anchor : anchor.nextSibling);
       syncButton();
       watchHost(anchor.parentNode);
     }
@@ -803,6 +885,8 @@ export function buildJs(options: ContentOptions): string {
         mode: MODE,
         active: current,
         window: isStandalone ? 'agent' : 'main',
+        standaloneApp: !!hubStore,
+        placement: (DOC.getElementById(BTN_ID) || {}).getAttribute ? DOC.getElementById(BTN_ID).getAttribute('data-place') : null,
         stylesheet: probe ? probe.replace(/"/g, '') : 'NOT LOADED',
         htmlClass: HTML.className,
         storedState: readStored(),
@@ -878,6 +962,7 @@ export function buildJs(options: ContentOptions): string {
     }
 
     function start() {
+      watchHub();
       syncEngine();
       tick();
       pollTimer = setInterval(tick, POLL_MS);
