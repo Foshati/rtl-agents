@@ -35,6 +35,7 @@ Optimized for **Persian**, **Arabic**, and **Hebrew**.
 - 🛡️ **Code & Layout Safety**: `pre`, `code`, Monaco editors, and table column order stay LTR — including a code snippet sitting inside a Persian sentence.
 - ⇄ **Native Toggle Button**: Injects a `⇄` button into the chat header next to "New Chat", borrowing its styling. The header button and the status bar item always agree.
 - 💾 **Persistent & Synced**: Remembers your preference across reloads and keeps every patched window in step instantly.
+- 🪟 **Reaches Antigravity IDE's Chat Frame**: Antigravity IDE renders its agent chat in a separate frame served from its local agent, out of reach of workbench files. RTL Agents adds one failure-safe line to `out/main.js` that runs the same CSS and JS inside that frame, and removes it again on deactivation.
 - 🔑 **Checksum Bypass**: Strips the relevant `product.json` checksums to avoid the `[Unsupported]` warning, and restores them exactly on deactivation.
 - ♻️ **Clean Uninstall**: Deactivating removes the button immediately and restores every file byte for byte. A backup from an older IDE build is never written over a newer one.
 - 🔄 **Auto-Reactivation**: Detects editor updates and re-applies the patch.
@@ -100,7 +101,7 @@ Open DevTools in the IDE (**Developer: Toggle Developer Tools**) and run:
 __rtlAgents.diagnose()
 ```
 
-It reports the loaded version and mode, whether the stylesheet arrived, the toggle state, which button the toggle anchored to, and how the first messages were decided. `__rtlAgents.enable()` turns RTL on directly — if text flips then, the stylesheet works and the problem is in the toggle path. If `__rtlAgents` is undefined, the patch is not loaded: run **RTL Agents: Restart RTL** and fully quit and reopen the IDE.
+In Antigravity IDE the chat lives in its own frame, so run it in the console of that frame (the **context** dropdown at the top of the DevTools console lists it as `127.0.0.1:<port>/c/…`), not in the top workbench. It reports the loaded version and mode, whether the stylesheet arrived, the toggle state, which button the toggle anchored to, and how the first messages were decided. `__rtlAgents.enable()` turns RTL on directly — if text flips then, the stylesheet works and the problem is in the toggle path. If `__rtlAgents` is undefined, the patch is not loaded: run **RTL Agents: Restart RTL** and fully quit and reopen the IDE.
 
 ## 🛠️ Commands
 

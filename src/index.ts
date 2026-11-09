@@ -1,7 +1,7 @@
 import type { BaseDirection, ContentOptions, PatchOptions, RtlMode } from './types'
 import * as vscode from 'vscode'
 import { findIdeInstallations } from './finder'
-import { addRtl, getStatus, isFullyInstalled, reinjectAssets, removeRtl } from './injector'
+import { addRtl, assetsCurrent, getStatus, isFullyInstalled, isInstalled, reinjectAssets, removeRtl } from './injector'
 import { createStatusBarItem, disposeStatusBar, updateStatusBar } from './statusBar'
 
 const STATE_MODE_KEY = 'rtl-agents.mode'
@@ -203,6 +203,10 @@ async function handleStatus(): Promise<void> {
     channel.appendLine(`    Backup HTML:   ${s.htmlBackupExists ? 'present' : 'none'}`)
     channel.appendLine(`    Backup Product:${s.productBackupExists ? ' present' : ' none'}`)
     channel.appendLine(`    Asset dir:     ${s.installation.workbenchDir}`)
+    if (s.isInstalled) {
+      const current = await assetsCurrent(s.installation, getPatchOptions())
+      channel.appendLine(`    Assets:        ${current ? 'current' : 'STALE — run "RTL Agents: Restart RTL", then fully quit and reopen'}`)
+    }
     for (const target of s.installation.targets) {
       channel.appendLine(`      - ${target.label}  ->  ${target.htmlPath}`)
     }
@@ -338,31 +342,36 @@ async function autoReactivate(): Promise<void> {
   }
 
   if (getSavedMode() !== 'active') {
-    if (savedVersion !== currentVersion) {
-      await saveVersion()
+    // The saved mode can be missing or stale while the patch is on disk — state
+    // that did not survive a reinstall, or an activation by an older build. A
+    // patch on disk means someone turned this on, and the deactivate command is
+    // the only thing that removes it, so adopt it instead of leaving it to rot.
+    let patchedOnDisk = false
+    for (const inst of await findIdeInstallations()) {
+      if (await isInstalled(inst)) {
+        patchedOnDisk = true
+      }
     }
-    return
-  }
-
-  // Extension updated: rewrite the assets with the current generation of code.
-  if (savedVersion !== currentVersion) {
-    await saveVersion()
-    await promptRestartIfChanged(await silentPatch(true))
-    return
-  }
-
-  // IDE updated and overwrote the patched workbench documents.
-  const installations = await findIdeInstallations()
-  if (installations.length === 0) {
-    return
-  }
-
-  for (const inst of installations) {
-    if (!(await isFullyInstalled(inst))) {
-      await promptRestartIfChanged(await silentPatch(false))
+    if (!patchedOnDisk) {
+      if (savedVersion !== currentVersion) {
+        await saveVersion()
+      }
       return
     }
+    await saveMode('active')
   }
+
+  if (savedVersion !== currentVersion) {
+    await saveVersion()
+  }
+
+  // On every start, bring the files on disk in line with this build: re-patch
+  // workbench documents an IDE update overwrote, and rewrite assets that differ
+  // from what this version and these settings generate. Keying this on a stored
+  // version alone is not enough — the stored version can already match while the
+  // assets on disk came from another build, and then nothing would ever fix them.
+  // Assets are compared by content, so a start with nothing stale writes nothing.
+  await promptRestartIfChanged(await silentPatch(true))
 }
 
 export function activate(context: vscode.ExtensionContext): void {
