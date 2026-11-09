@@ -155,13 +155,13 @@ jobs:
           # Both registries index asynchronously, so poll instead of assuming.
           poll() {
             label="$1"; fn="$2"; live=""
-            for attempt in $(seq 1 10); do
+            for attempt in $(seq 1 25); do
               live=$("$fn" 2>/dev/null || true)
               if [ "$live" = "$VERSION" ]; then
                 echo "$label is serving $VERSION"
                 return 0
               fi
-              echo "$label reports '${live:-none}', waiting for '$VERSION' ($attempt/10)"
+              echo "$label reports '${live:-none}', waiting for '$VERSION' ($attempt/25)"
               sleep 30
             done
             echo "::error::$label never reached $VERSION (last seen '${live:-none}')"
